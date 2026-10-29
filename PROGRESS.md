@@ -131,6 +131,66 @@ Deadline: public web demo by **November 4, 2026, 9:00 PM ET**.
 - Real touch/stylus and the colour picker dialog itself (an OS widget) were not driven.
 - Dev-only `window.__whiteboard` is still exposed in dev builds (used for the checks above).
 
+## Whiteboard specification — gap analysis and checklist (started 2026-10-29)
+
+Source: the 35-section "Complete Whiteboard Implementation Specification". Deadline: 2026-11-04 21:00 ET. Work is split into the spec's five milestones. A box is ticked only when the feature is implemented **and** checked; "partial" says what is missing.
+
+### Gap analysis (what existed before Milestone 1)
+| Area | Already there | Missing for the spec |
+|---|---|---|
+| Coordinate system | `screenToWorld`/`worldToScreen`/`zoomAt`/`visibleWorldRect` (tested) | zoom stops, fit-to-content |
+| Pen / eraser | pen, whole-object eraser, one undo step per gesture | spec widths/colours, saved prefs, segment eraser, eraser cursor + sizes |
+| Select | single select, move, image resize | multi-select, shift-toggle, marquee, group move, select all, duplicate, multi-delete |
+| Pan / zoom | hand tool, wheel pan, ctrl+wheel zoom, ± buttons | Space and middle-mouse pan, zoom shortcuts, fit, bottom-right controls, stops |
+| Undo / redo | snapshot history with transactions | top-bar buttons |
+| Shell | top bar, docked/drawer AI panel, bottom toolbar | vertical floating tool rail, Lucide icons, tooltips, resizable panel, Ctrl+J, one popover at a time |
+| Shortcuts | undo/redo/delete only, scattered | one central manager, platform-aware, typing-safe |
+| Save status | Saving…/Saved/error | "Unsaved changes", retry |
+| Not started | highlighter, shapes, lasso, context menu, z-order, rotate, copy/paste, drag-drop/paste images, export options, settings modal, dark mode, shortcut reference, region-select UI, Playwright | Milestones 2–5 |
+
+### Expo / Skia / web compatibility notes
+- Skia on web needs CanvasKit WASM (`setup-skia-web`), loaded lazily; Skia modules are only imported from the lazy canvas chunk.
+- `lucide-react-native` needs `react-native-svg`; installed via `expo install` (15.16.0). Icons are deep-imported (`lucide-react-native/icons/<name>`) so the bundle does not carry the whole icon set.
+- Gesture Handler 3 hooks give no modifier keys, coalesced pointer events or stylus pressure on web; Shift state is read from DOM pointer events, and pressure is not available through this path.
+
+### Milestone 1 — Canvas and tools (done 2026-10-29; gaps listed)
+Status key: ✅ implemented and checked · ◐ partly · ✗ not done.
+
+| Item | Status | What was checked / what is missing |
+|---|---|---|
+| App shell: top bar (logo, editable title, save status, undo/redo, AI toggle, background, export, clear) | ✅ | Title: click to edit, Enter/blur save, Escape cancels, empty → "Untitled board". Missing from the spec's bar: Share, Settings, More (Milestone 3), tool indicator (optional) |
+| AI panel collapsible + resizable (280–480 px), Ctrl+J | ✅ | Real drag 340 → 447 → clamped at 480; width and open state remembered; objects untouched. Content of the panel is still the Phase 3 mock UI (Milestone 4) |
+| Vertical floating tool rail, Lucide icons, tooltips with shortcut, active state, labels | ✅ | Select, Hand, Pen, Eraser, Text, Image. Highlighter, Shapes, Lasso are **omitted** (not built yet). Bottom dock on narrow screens |
+| One popover at a time; Escape order; outside-click closes | ✅ | Pen/eraser settings open next to the button on second click; choosing another tool, pressing on the canvas, or Escape closes them |
+| Select: multi-select, Shift+click toggle, marquee, group move, Select all, Duplicate, multi-delete, Escape | ✅ | Marquee rule documented in `logic/selection.ts` (any part of the object touches the rectangle; strokes use their real path). Group move/duplicate/delete are one undo step. Locked objects, resize of non-image objects, Shift-constrain: Milestone 2 |
+| Pen: spec colours (7 + custom picker/hex), widths 1.5/2.5/4/6/10 (+ any 1–64), live preview, saved between sessions | ✅ | Settings affect new strokes only. Opacity, smoothing level, pressure sensitivity are **not** implemented |
+| Eraser: object and segment modes, sizes S/M/L + custom, ring cursor, one undo step per drag | ✅ | Segment mode cuts strokes at the exact edge of the ring into independent strokes (text/images untouched). Real drag verified. Locked-object rule: Milestone 2 |
+| Pan: Hand (G), hold Space, middle mouse, wheel | ◐ | Hand, Space, wheel verified. **Middle mouse was only verified with synthetic events** (a real middle-button drag was not possible in the test tool). Two-finger touch pan is wired but untested on a device |
+| Zoom: 10%–800%, stops, wheel/pinch, Ctrl +/−/0, Shift+1 fit, bottom-right controls | ◐ | Stops, focal-point preservation, fit and reset verified. Ctrl+= / Ctrl+− were verified with synthetic key events only (the test tool cannot send browser-zoom keys). Touch pinch untested on a device |
+| Undo/redo buttons (disabled when unavailable) + shortcuts | ✅ | Ctrl+Z / Ctrl+Shift+Z verified with real key presses |
+| Central shortcut manager (one handler, platform-aware, typing- and modal-safe) | ✅ | V G P E T I, Ctrl+Z/Shift+Z/Y, Ctrl+D/A/J, zoom keys, Shift+1, Delete, Escape. Not yet: Ctrl+C/X/V, Ctrl+N, Ctrl+S, `?` reference modal (Milestones 2/3/5) |
+| Save status: Saving… / Saved / Unsaved changes / Error saving + Retry | ✅ | A forced IndexedDB failure showed "Error saving" with Retry, and Retry → "Saved" |
+| Persistence of board and tool preferences across reload | ✅ | Objects, pen colour/width, eraser mode, panel width restored |
+| Responsive (375 px): two-row top bar, bottom dock, popover above dock, 40 px targets | ✅ | No horizontal scroll; popover fully inside the viewport |
+
+**Tests:** shared 5, server 32, client 211 = 248 pass. **Typecheck** clean. **`expo export -p web`** builds.
+
+**Performance (measured, dev build, Chromium in the preview pane, panning continuously):**
+
+| Strokes (40 points each) | Avg frame | p95 | ≈ fps |
+|---|---|---|---|
+| 100 | 6.4 ms | 11 ms | 157 |
+| 500 | 14.2 ms | 18 ms | 70 |
+| 1000 | 22.8 ms | 24 ms | 44 |
+| 1000 at 400 % | 18.3 ms | 24 ms | 55 |
+
+So 500 strokes pans above 60 fps, but **1000 strokes does not reach 60 fps** in this environment. The objects layer is memoized so panning skips re-reconciling them; the remaining cost is repainting every path each frame. Caching committed strokes into a Skia picture/image is the next step (Milestone 5). Not measured: production build, real GPU, drawing latency, undo/redo at scale, multiple large images.
+
+**Known gaps in Milestone 1:** dark mode/semantic theme tokens (colours are still static), pen pressure and coalesced pointer events (Gesture Handler does not expose them on web), highlighter/shapes/lasso, stroke width changes are not pressure-aware, Playwright end-to-end tests, keyboard navigation inside menus, focus trapping in dialogs.
+
+### Milestones 2–5
+Not started. See spec sections 11–32. Dark mode, Playwright end-to-end tests, pen pressure, rotation and the highlighter/shapes/lasso tools are explicitly **not** in Milestone 1.
+
 ## Next: Phase 4 — Real AI
 1. Ollama provider (local vision model), selectable with `AI_PROVIDER=ollama`; contract tests against the same suite.
 2. Meta provider behind `ENABLE_PAID_AI`, with a server-side budget gate (per-session and daily call caps, conservative estimates, clearly labelled as estimates) and a usage dashboard. No paid call without an explicit click.

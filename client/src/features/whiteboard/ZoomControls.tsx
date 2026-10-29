@@ -1,28 +1,34 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Minus, Plus, Scan } from "../../components/icons";
+import { IconButton } from "../../components/IconButton";
 import { colors, radius } from "../../lib/theme";
+import { shortcutLabel } from "../shortcuts/shortcuts";
 import { useWhiteboardStore } from "./whiteboardStore";
 
-const STEP = 1.25;
-
-export function ZoomControls() {
+/**
+ * Bottom-right zoom control: step out/in through the standard levels, see the
+ * current percentage, reset to 100% and fit all content. `compact` (narrow
+ * screens) lifts it above the tool dock.
+ */
+export function ZoomControls({ compact }: { compact: boolean }) {
   const scale = useWhiteboardStore((s) => s.viewport.scale);
-  const { zoomAt, resetView } = useWhiteboardStore.getState();
-  const zoomAboutCentre = (factor: number) => {
-    const { width, height } = useWhiteboardStore.getState().canvasSize;
-    zoomAt({ x: width / 2, y: height / 2 }, factor);
-  };
+  const { zoomStep, resetZoom, fitContent } = useWhiteboardStore.getState();
+  const percent = Math.round(scale * 100);
 
   return (
-    <View style={styles.container}>
-      <Pressable accessibilityLabel="Zoom out" onPress={() => zoomAboutCentre(1 / STEP)} style={styles.button}>
-        <Text style={styles.text}>−</Text>
-      </Pressable>
-      <Pressable accessibilityLabel="Reset zoom" onPress={resetView} style={styles.percent}>
-        <Text style={styles.textSmall}>{Math.round(scale * 100)}%</Text>
-      </Pressable>
-      <Pressable accessibilityLabel="Zoom in" onPress={() => zoomAboutCentre(STEP)} style={styles.button}>
-        <Text style={styles.text}>+</Text>
-      </Pressable>
+    <View style={[styles.container, compact ? styles.compact : styles.regular]} accessibilityLabel="Zoom controls">
+      <IconButton icon={Minus} label="Zoom out" shortcut={shortcutLabel("-", { mod: true })} onPress={() => zoomStep(-1)} size={34} tooltipSide="top" />
+      <Text
+        accessibilityRole="button"
+        accessibilityLabel={`Zoom ${percent} percent. Press to reset to 100 percent`}
+        onPress={resetZoom}
+        style={styles.percent}
+      >
+        {percent}%
+      </Text>
+      <IconButton icon={Plus} label="Zoom in" shortcut={shortcutLabel("+", { mod: true })} onPress={() => zoomStep(1)} size={34} tooltipSide="top" />
+      <View style={styles.divider} />
+      <IconButton icon={Scan} label="Fit content" shortcut={shortcutLabel("1", { shift: true })} onPress={fitContent} size={34} tooltipSide="top" />
     </View>
   );
 }
@@ -30,17 +36,22 @@ export function ZoomControls() {
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    top: 12,
-    right: 12,
     flexDirection: "row",
     alignItems: "center",
+    padding: 3,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+    zIndex: 20,
   },
-  button: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
-  percent: { minWidth: 52, height: 34, alignItems: "center", justifyContent: "center" },
-  text: { color: colors.text, fontSize: 18, fontWeight: "600" },
-  textSmall: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  regular: { right: 12, bottom: 16 },
+  compact: { right: 12, top: 12 },
+  percent: { minWidth: 48, textAlign: "center", color: colors.text, fontSize: 12, fontWeight: "700", paddingVertical: 8 },
+  divider: { width: 1, height: 20, marginHorizontal: 3, backgroundColor: colors.border },
 });

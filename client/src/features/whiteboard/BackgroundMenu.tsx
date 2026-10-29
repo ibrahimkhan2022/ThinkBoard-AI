@@ -1,16 +1,18 @@
-import { useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { colors, radius } from "../../lib/theme";
+import { BACKGROUND_OVERLAY, useOverlayStore } from "../overlays/overlayStore";
 import { BACKGROUND_LABELS } from "./logic/background";
 import { BACKGROUNDS } from "./types";
 import { useWhiteboardStore } from "./whiteboardStore";
 
-/** Top-bar dropdown for the board's background pattern. */
+/** Top-bar dropdown for the board background. Shares the single overlay slot with every other popover. */
 export function BackgroundMenu() {
   const background = useWhiteboardStore((s) => s.background);
   const setBackground = useWhiteboardStore((s) => s.setBackground);
-  const [open, setOpen] = useState(false);
+  const open = useOverlayStore((s) => s.active === BACKGROUND_OVERLAY);
   const compact = useWindowDimensions().width < 900;
+  const trigger = { dataSet: { overlayTrigger: "1" } } as object;
+  const root = { dataSet: { overlayRoot: "1" } } as object;
 
   return (
     <View style={styles.anchor}>
@@ -18,15 +20,16 @@ export function BackgroundMenu() {
         accessibilityRole="button"
         accessibilityLabel="Background"
         accessibilityState={{ expanded: open }}
-        onPress={() => setOpen((v) => !v)}
+        onPress={() => useOverlayStore.getState().toggle(BACKGROUND_OVERLAY)}
         style={styles.button}
+        {...trigger}
       >
         <Text style={styles.buttonText}>
           {compact ? "Background" : `Background: ${BACKGROUND_LABELS[background]}`} ▾
         </Text>
       </Pressable>
       {open && (
-        <View style={styles.menu}>
+        <View style={styles.menu} accessibilityRole="menu" {...root}>
           {BACKGROUNDS.map((option) => (
             <Pressable
               key={option}
@@ -35,7 +38,7 @@ export function BackgroundMenu() {
               accessibilityState={{ selected: option === background }}
               onPress={() => {
                 setBackground(option);
-                setOpen(false);
+                useOverlayStore.getState().close();
               }}
               style={[styles.item, option === background && styles.itemActive]}
             >
@@ -50,13 +53,13 @@ export function BackgroundMenu() {
 
 const styles = StyleSheet.create({
   anchor: { position: "relative", zIndex: 20 },
-  button: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border },
+  button: { height: 36, justifyContent: "center", paddingHorizontal: 12, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border },
   buttonText: { color: colors.text, fontSize: 13, fontWeight: "600" },
   menu: {
     position: "absolute",
-    top: 40,
+    top: 42,
     right: 0,
-    minWidth: 140,
+    minWidth: 150,
     padding: 4,
     borderRadius: radius.md,
     borderWidth: 1,

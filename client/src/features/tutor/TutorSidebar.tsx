@@ -29,12 +29,12 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
   const loading = status === "loading";
 
   const objects = useWhiteboardStore((s) => s.objects);
-  const selectedId = useWhiteboardStore((s) => s.selectedId);
+  const selectedIds = useWhiteboardStore((s) => s.selectedIds);
   const viewport = useWhiteboardStore((s) => s.viewport);
   const canvasSize = useWhiteboardStore((s) => s.canvasSize);
   const scope = useMemo(
-    () => chooseAIRegion(objects, selectedId, viewport, canvasSize)?.source ?? "none",
-    [objects, selectedId, viewport, canvasSize],
+    () => chooseAIRegion(objects, selectedIds, viewport, canvasSize)?.source ?? "none",
+    [objects, selectedIds, viewport, canvasSize],
   );
 
   useEffect(() => {

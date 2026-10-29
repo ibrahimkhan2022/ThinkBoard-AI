@@ -109,7 +109,7 @@ describe("images, selection and clear", () => {
 
   it("adds an image, selects it, and switches to the select tool", () => {
     const id = get().addImage(rect);
-    expect(get().selectedId).toBe(id);
+    expect(get().selectedIds).toEqual([id]);
     expect(get().tool).toBe("select");
     expect(get().objects[0]).toMatchObject({ kind: "image", id });
   });
@@ -138,7 +138,7 @@ describe("images, selection and clear", () => {
     get().addImage(rect);
     get().deleteSelected();
     expect(get().objects).toHaveLength(0);
-    expect(get().selectedId).toBeNull();
+    expect(get().selectedIds).toEqual([]);
     get().undo();
     expect(get().objects).toHaveLength(1);
   });
@@ -154,15 +154,15 @@ describe("images, selection and clear", () => {
 
   it("deselects when the selected object disappears through undo", () => {
     const id = get().addImage(rect);
-    expect(get().selectedId).toBe(id);
+    expect(get().selectedIds).toEqual([id]);
     get().undo();
-    expect(get().selectedId).toBeNull();
+    expect(get().selectedIds).toEqual([]);
   });
 
   it("clears selection when leaving the select tool", () => {
     get().addImage(rect);
     get().setTool("pen");
-    expect(get().selectedId).toBeNull();
+    expect(get().selectedIds).toEqual([]);
   });
 });
 

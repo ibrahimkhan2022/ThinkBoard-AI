@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, radius } from "../../lib/theme";
+import { useModalGuard } from "../overlays/overlayStore";
 
 interface Props {
   visible: boolean;
@@ -15,6 +16,7 @@ interface Props {
 /** In-app text prompt (Alert.prompt is iOS-only and does nothing on web). */
 export function PromptDialog({ visible, title, initialValue, confirmLabel, maxLength, onConfirm, onCancel }: Props) {
   const [value, setValue] = useState(initialValue);
+  useModalGuard(visible);
   useEffect(() => {
     if (visible) setValue(initialValue);
   }, [visible, initialValue]);

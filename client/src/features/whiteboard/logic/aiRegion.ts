@@ -45,21 +45,21 @@ function union(rects: Rect[]): Rect {
 }
 
 /**
- * Chooses which part of the board the AI looks at. A selection wins; otherwise
+ * Chooses which part of the board the AI looks at. A selection (one or several objects) wins; otherwise
  * the content currently on screen, cropped to what is actually drawn there.
  * Returns null when there is nothing to show (empty view, stale selection).
  */
 export function chooseAIRegion(
   objects: CanvasObject[],
-  selectedId: string | null,
+  selectedIds: string[],
   viewport: Viewport,
   canvasSize: { width: number; height: number },
 ): AIRegion | null {
-  const selected = selectedId ? objects.find((o) => o.id === selectedId) : undefined;
-  if (selected) {
+  const selected = objects.filter((o) => selectedIds.includes(o.id));
+  if (selected.length > 0) {
     return {
       source: "selection",
-      region: atLeast(pad(objectBounds(selected), AI_REGION_PADDING), AI_REGION_MIN_SIZE),
+      region: atLeast(pad(union(selected.map(objectBounds)), AI_REGION_PADDING), AI_REGION_MIN_SIZE),
     };
   }
 

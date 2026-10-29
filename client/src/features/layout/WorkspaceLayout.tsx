@@ -1,61 +1,72 @@
-import { useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { colors, radius } from "../../lib/theme";
+import { useMemo, useRef, type ReactNode } from "react";
+import { PanResponder, Pressable, StyleSheet, useWindowDimensions, View, type ViewStyle } from "react-native";
+import { colors } from "../../lib/theme";
 import { TutorSidebar } from "../tutor/TutorSidebar";
+import { clampPanelWidth, useUiStore, WIDE_BREAKPOINT } from "./uiStore";
 
-const WIDE_BREAKPOINT = 900;
-const SIDEBAR_WIDTH = 380;
+const TOP_BAR_HEIGHT = 52;
+const resizeCursor = { cursor: "col-resize" } as unknown as ViewStyle;
+
+interface Props {
+  children: ReactNode;
+  /** Logo, board name and save status. */
+  left?: ReactNode;
+  /** Undo / redo. */
+  center?: ReactNode;
+  /** AI toggle, background, export. */
+  right?: ReactNode;
+}
 
 /**
- * Wide screens: collapsible sidebar docked on the left, board beside it.
- * Narrow screens: the sidebar is a drawer over the board, closed by default
- * so the drawing area keeps the full screen.
+ * Wide screens: top bar, then a docked AI panel (collapsible, drag its edge to
+ * resize) beside the board. Narrow screens: the panel is a drawer over the
+ * board, closed by default, and the top bar wraps onto two rows. Opening or
+ * resizing the panel only changes the canvas size; objects keep their canvas
+ * coordinates and the view stays anchored to the canvas's top-left corner.
  */
-export function WorkspaceLayout({
-  children,
-  leading,
-  actions,
-}: {
-  children: ReactNode;
-  /** Left side of the top bar: navigation and the board name. */
-  leading?: ReactNode;
-  actions?: ReactNode;
-}) {
+export function WorkspaceLayout({ children, left, center, right }: Props) {
   const { width } = useWindowDimensions();
   const isWide = width >= WIDE_BREAKPOINT;
-  const [sidebarOpen, setSidebarOpen] = useState(isWide);
+  const open = useUiStore((s) => (isWide ? s.aiPanelOpen : s.drawerOpen));
+  const panelWidth = useUiStore((s) => s.aiPanelWidth);
+  const close = () => useUiStore.getState().setAiOpen(isWide, false);
 
   return (
     <View style={styles.root}>
-      {/* Narrow screens put the actions on their own row instead of squeezing the board name. */}
       <View style={[styles.topBar, !isWide && styles.topBarNarrow]}>
-        <View style={styles.topRow}>
-          {!sidebarOpen && (
-            <Pressable accessibilityLabel="Open tutor panel" onPress={() => setSidebarOpen(true)} style={styles.openButton}>
-              <Text style={styles.openText}>AI Tutor</Text>
-            </Pressable>
-          )}
-          {leading}
-          {isWide && <View style={styles.spacer} />}
-          {isWide && actions}
-        </View>
-        {!isWide && actions && <View style={styles.actionsRow}>{actions}</View>}
+        {isWide ? (
+          <>
+            <View style={[styles.section, styles.start]}>{left}</View>
+            <View style={styles.center}>{center}</View>
+            <View style={[styles.section, styles.end]}>{right}</View>
+          </>
+        ) : (
+          <>
+            <View style={styles.rowStart}>{left}</View>
+            <View style={styles.rowBetween}>
+              {center}
+              <View style={styles.spacer} />
+              {right}
+            </View>
+          </>
+        )}
       </View>
 
       <View style={styles.body}>
-        {sidebarOpen && isWide && (
-          <View style={[styles.sidebarDocked, { width: SIDEBAR_WIDTH }]}>
-            <TutorSidebar onClose={() => setSidebarOpen(false)} />
+        {open && isWide && (
+          <View style={[styles.docked, { width: panelWidth }]}>
+            <TutorSidebar onClose={close} />
+            <ResizeHandle />
           </View>
         )}
 
         <View style={styles.board}>{children}</View>
 
-        {sidebarOpen && !isWide && (
+        {open && !isWide && (
           <>
-            <Pressable style={styles.backdrop} onPress={() => setSidebarOpen(false)} accessibilityLabel="Close tutor panel" />
-            <View style={[styles.sidebarDrawer, { width: Math.min(SIDEBAR_WIDTH, width * 0.9) }]}>
-              <TutorSidebar onClose={() => setSidebarOpen(false)} />
+            <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="Close AI tutor" />
+            <View style={[styles.drawer, { width: Math.min(clampPanelWidth(panelWidth) + 40, width * 0.92) }]}>
+              <TutorSidebar onClose={close} />
             </View>
           </>
         )}
@@ -64,41 +75,57 @@ export function WorkspaceLayout({
   );
 }
 
+/** Drag the panel's right edge to change its width (280–480 px). */
+function ResizeHandle() {
+  const start = useRef(0);
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          start.current = useUiStore.getState().aiPanelWidth;
+        },
+        onPanResponderMove: (_e, g) => useUiStore.getState().setAiPanelWidth(start.current + g.dx),
+      }),
+    [],
+  );
+  return (
+    <View
+      {...responder.panHandlers}
+      accessibilityRole="adjustable"
+      accessibilityLabel="Resize AI tutor panel"
+      style={[styles.handle, resizeCursor]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  topRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, minWidth: 0 },
-  topBarNarrow: { height: "auto", minHeight: 52, flexDirection: "column", alignItems: "stretch", paddingVertical: 8, gap: 6 },
-  actionsRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center" },
   topBar: {
-    height: 52,
-    paddingHorizontal: 16,
+    minHeight: TOP_BAR_HEIGHT,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
     // Above the board so top-bar dropdowns are not hidden by it.
-    zIndex: 10,
+    zIndex: 30,
   },
+  topBarNarrow: { flexDirection: "column", alignItems: "stretch", paddingVertical: 6, gap: 4 },
+  section: { flex: 1, flexDirection: "row", alignItems: "center", minWidth: 0 },
+  start: { justifyContent: "flex-start" },
+  end: { justifyContent: "flex-end" },
+  center: { flexDirection: "row", alignItems: "center" },
+  rowStart: { flexDirection: "row", alignItems: "center", minWidth: 0 },
+  rowBetween: { flexDirection: "row", alignItems: "center", gap: 6 },
   spacer: { flex: 1 },
-  openButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
-    backgroundColor: colors.accentSoft,
-  },
-  openText: { color: colors.accent, fontSize: 13, fontWeight: "700" },
   body: { flex: 1, flexDirection: "row" },
-  sidebarDocked: { borderRightWidth: 1, borderRightColor: colors.border },
+  docked: { borderRightWidth: 1, borderRightColor: colors.border, position: "relative" },
+  // Entirely inside the panel: the canvas sits on top of anything that overlaps it.
+  handle: { position: "absolute", top: 0, bottom: 0, right: 0, width: 8, zIndex: 40 },
   board: { flex: 1 },
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.25)" },
-  sidebarDrawer: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    borderRightWidth: 1,
-    borderRightColor: colors.border,
-  },
+  drawer: { position: "absolute", top: 0, bottom: 0, left: 0, borderRightWidth: 1, borderRightColor: colors.border, zIndex: 40 },
 });

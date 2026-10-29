@@ -62,7 +62,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
     useAnnotationStore.getState().setAnnotation(null);
 
     const board = useWhiteboardStore.getState();
-    const picked = chooseAIRegion(board.objects, board.selectedId, board.viewport, board.canvasSize);
+    const picked = chooseAIRegion(board.objects, board.selectedIds, board.viewport, board.canvasSize);
     if (!picked && mode !== "ask") {
       set(fail("There is nothing on screen for the tutor to look at. Write or draw something, or zoom out to it."));
       return;

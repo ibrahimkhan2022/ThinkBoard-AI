@@ -1,9 +1,13 @@
+import type { Rect } from "@thinkboard/shared";
 import { create } from "zustand";
 import { createId } from "../../lib/ids";
+import { eraseStroke, interpolatePoints } from "./logic/erase";
+import { contentBounds } from "./logic/exportPlan";
 import { commit, emptyHistory, redo, undo, type History } from "./logic/history";
-import { objectsHitByEraser, rectContains } from "./logic/hitTest";
+import { objectsHitByEraser, rectContains, translateObject } from "./logic/hitTest";
 import { clampFontSize, DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE } from "./logic/textLayout";
-import { INITIAL_VIEWPORT, panBy, zoomAt } from "./logic/viewport";
+import { FIT_PADDING_PX, fitViewport, INITIAL_VIEWPORT, nextZoomStop, panBy, zoomAt, zoomTo } from "./logic/viewport";
+import { loadToolPrefs, saveToolPrefs, type EraserMode } from "./toolPrefs";
 import type {
   Background,
   CanvasObject,
@@ -19,22 +23,13 @@ import type {
 const MIN_POINT_DISTANCE = 0.75;
 /** How close (canvas units) a click must be to count as hitting existing text. */
 const TEXT_CLICK_MARGIN = 4;
+/** Duplicates and pastes land this far (canvas units) from the original so they do not hide it. */
+export const DUPLICATE_OFFSET = 24;
 
-export const PEN_COLORS = [
-  "#1C1C1A",
-  "#6B6B66",
-  "#D92D20",
-  "#F79009",
-  "#EAAA08",
-  "#12805C",
-  "#0E9384",
-  "#1570EF",
-  "#7A3FD1",
-  "#D444A6",
-  "#8B5E34",
-  "#FFFFFF",
-] as const;
-export const PEN_WIDTHS = [2, 4, 8] as const;
+export const PEN_COLORS = ["#1C1C1A", "#4B4B48", "#1570EF", "#D92D20", "#12805C", "#7A3FD1", "#F79009"] as const;
+/** Extra fine, fine, medium, thick, extra thick: base widths in canvas units. */
+export const PEN_WIDTHS = [1.5, 2.5, 4, 6, 10] as const;
+export const ERASER_SIZES = [6, 12, 24] as const;
 export const MIN_PEN_WIDTH = 1;
 export const MAX_PEN_WIDTH = 64;
 export const MIN_ERASER_SIZE = 4;
@@ -42,6 +37,7 @@ export const MAX_ERASER_SIZE = 60;
 const MAX_RECENT_COLORS = 6;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const roundHalf = (value: number) => Math.round(value * 2) / 2;
 
 /** What a board needs in order to be opened. */
 export interface LoadableBoard {
@@ -90,13 +86,21 @@ interface WhiteboardState {
   transactionBase: CanvasObject[] | null;
 
   tool: Tool;
+  /** A tool held temporarily (Space or middle mouse for panning); wins over `tool`. */
+  tempTool: Tool | null;
   penColor: string;
   penWidth: number;
   fontSize: number;
   /** Eraser radius in screen pixels. */
   eraserSize: number;
+  eraserMode: EraserMode;
   recentColors: string[];
-  selectedId: string | null;
+
+  selectedIds: string[];
+  /** Selection rectangle being dragged, in canvas units. */
+  marquee: Rect | null;
+  /** True while the canvas is being dragged (for the grabbing cursor). */
+  panning: boolean;
 
   viewport: Viewport;
   canvasSize: { width: number; height: number };
@@ -106,7 +110,14 @@ interface WhiteboardState {
   setBackground: (background: Background) => void;
 
   setTool: (tool: Tool) => void;
-  select: (id: string | null) => void;
+  setTempTool: (tool: Tool | null) => void;
+  setEraserMode: (mode: EraserMode) => void;
+  setPanning: (panning: boolean) => void;
+
+  setSelection: (ids: string[]) => void;
+  toggleSelected: (id: string) => void;
+  selectAll: () => void;
+  setMarquee: (marquee: Rect | null) => void;
 
   /** Colour/size apply to the text being typed, else the selection, else the active tool. */
   applyColor: (color: string) => void;
@@ -125,10 +136,14 @@ interface WhiteboardState {
   beginTransaction: () => void;
   endTransaction: () => void;
   eraseAt: (point: Point, radius: number) => void;
+  /** Erases along a straight drag so a fast stroke of the mouse cannot skip over content. */
+  eraseAlong: (from: Point, to: Point, radius: number) => void;
   replaceObject: (object: CanvasObject) => void;
+  replaceObjects: (objects: CanvasObject[]) => void;
 
   addImage: (image: Omit<ImageObject, "id" | "kind">) => string;
   deleteSelected: () => void;
+  duplicateSelected: () => void;
   clear: () => void;
   undo: () => void;
   redo: () => void;
@@ -137,32 +152,36 @@ interface WhiteboardState {
   panBy: (dx: number, dy: number) => void;
   /** Zoom about a screen point (canvas-relative pixels). */
   zoomAt: (screenPoint: Point, factor: number) => void;
+  /** Steps to the next zoom level about the centre of the canvas. */
+  zoomStep: (direction: 1 | -1) => void;
+  /** Back to 100%, keeping the centre of the canvas where it is. */
+  resetZoom: () => void;
+  /** Frames all content; with none, returns to the default view. */
+  fitContent: () => void;
   resetView: () => void;
 }
 
 type StyleSource = Pick<
   WhiteboardState,
-  "textDraft" | "objects" | "selectedId" | "tool" | "penColor" | "penWidth" | "fontSize" | "eraserSize"
+  "textDraft" | "objects" | "selectedIds" | "tool" | "penColor" | "penWidth" | "fontSize" | "eraserSize"
 >;
+
+/** The tool in effect right now: a held temporary tool (panning) wins. */
+export const effectiveTool = (s: Pick<WhiteboardState, "tool" | "tempTool">): Tool => s.tempTool ?? s.tool;
 
 /** What the colour and size controls currently edit, for display. */
 export function selectStyleTarget(s: StyleSource): StyleTarget {
   if (s.textDraft) {
-    return {
-      kind: "text-draft",
-      sizeLabel: "Text size",
-      color: s.textDraft.color,
-      size: s.textDraft.fontSize,
-      min: MIN_FONT_SIZE,
-      max: MAX_FONT_SIZE,
-    };
+    return { kind: "text-draft", sizeLabel: "Text size", color: s.textDraft.color, size: s.textDraft.fontSize, min: MIN_FONT_SIZE, max: MAX_FONT_SIZE };
   }
-  const selected = s.selectedId ? s.objects.find((o) => o.id === s.selectedId) : undefined;
-  if (selected?.kind === "stroke") {
-    return { kind: "object", sizeLabel: "Line width", color: selected.color, size: selected.width, min: MIN_PEN_WIDTH, max: MAX_PEN_WIDTH };
+  const selected = s.objects.filter((o) => s.selectedIds.includes(o.id));
+  const first = selected.find((o) => o.kind === "stroke" || o.kind === "text");
+  if (first?.kind === "stroke") {
+    const mixed = selected.some((o) => o.kind === "text");
+    return { kind: "object", sizeLabel: mixed ? "Size" : "Line width", color: first.color, size: first.width, min: MIN_PEN_WIDTH, max: MAX_PEN_WIDTH };
   }
-  if (selected?.kind === "text") {
-    return { kind: "object", sizeLabel: "Text size", color: selected.color, size: selected.fontSize, min: MIN_FONT_SIZE, max: MAX_FONT_SIZE };
+  if (first?.kind === "text") {
+    return { kind: "object", sizeLabel: "Text size", color: first.color, size: first.fontSize, min: MIN_FONT_SIZE, max: MAX_FONT_SIZE };
   }
   if (s.tool === "text") {
     return { kind: "tool", sizeLabel: "Text size", color: s.penColor, size: s.fontSize, min: MIN_FONT_SIZE, max: MAX_FONT_SIZE };
@@ -173,23 +192,28 @@ export function selectStyleTarget(s: StyleSource): StyleTarget {
   return { kind: "tool", sizeLabel: "Line width", color: s.penColor, size: s.penWidth, min: MIN_PEN_WIDTH, max: MAX_PEN_WIDTH };
 }
 
+const savedPrefs = loadToolPrefs();
+
 export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
   /** Replaces objects as a new undo step. */
   const commitObjects = (next: CanvasObject[]) =>
     set((s) => ({ objects: next, history: commit(s.history, s.objects) }));
 
-  const selectedObject = () => {
-    const { objects, selectedId } = get();
-    return selectedId ? objects.find((o) => o.id === selectedId) : undefined;
+  const selectedObjects = () => {
+    const { objects, selectedIds } = get();
+    return objects.filter((o) => selectedIds.includes(o.id));
   };
 
-  /** Applies a change to the selected object; `live` skips history (caller wraps a transaction). */
+  /** Applies a change to every selected object; `live` skips history (caller wraps a transaction). */
   const restyleSelected = (change: (object: CanvasObject) => CanvasObject, live: boolean) => {
-    const { objects, selectedId } = get();
-    const next = objects.map((o) => (o.id === selectedId ? change(o) : o));
+    const { objects, selectedIds } = get();
+    const next = objects.map((o) => (selectedIds.includes(o.id) ? change(o) : o));
     if (live) set({ objects: next });
     else commitObjects(next);
   };
+
+  const keepExistingSelection = (objects: CanvasObject[], ids: string[]) =>
+    ids.filter((id) => objects.some((o) => o.id === id));
 
   let textSession = 0;
 
@@ -205,12 +229,17 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
     transactionBase: null,
 
     tool: "pen",
-    penColor: PEN_COLORS[0],
-    penWidth: PEN_WIDTHS[1],
-    fontSize: DEFAULT_FONT_SIZE,
-    eraserSize: 10,
-    recentColors: [],
-    selectedId: null,
+    tempTool: null,
+    penColor: savedPrefs.penColor ?? PEN_COLORS[0],
+    penWidth: savedPrefs.penWidth ?? PEN_WIDTHS[1],
+    fontSize: savedPrefs.fontSize ?? DEFAULT_FONT_SIZE,
+    eraserSize: savedPrefs.eraserSize ?? ERASER_SIZES[1],
+    eraserMode: savedPrefs.eraserMode ?? "object",
+    recentColors: savedPrefs.recentColors ?? [],
+
+    selectedIds: [],
+    marquee: null,
+    panning: false,
 
     viewport: INITIAL_VIEWPORT,
     canvasSize: { width: 1000, height: 1000 },
@@ -226,7 +255,10 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
         activeStroke: null,
         textDraft: null,
         transactionBase: null,
-        selectedId: null,
+        selectedIds: [],
+        marquee: null,
+        tempTool: null,
+        panning: false,
       }),
 
     setTitle: (title) => set({ title }),
@@ -234,9 +266,17 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
 
     setTool: (tool) => {
       get().commitTextEdit();
-      set((s) => ({ tool, selectedId: tool === "select" ? s.selectedId : null }));
+      set((s) => ({ tool, tempTool: null, selectedIds: tool === "select" ? s.selectedIds : [], marquee: null }));
     },
-    select: (selectedId) => set({ selectedId }),
+    setTempTool: (tempTool) => set({ tempTool }),
+    setEraserMode: (eraserMode) => set({ eraserMode }),
+    setPanning: (panning) => set({ panning }),
+
+    setSelection: (ids) => set({ selectedIds: ids }),
+    toggleSelected: (id) =>
+      set((s) => ({ selectedIds: s.selectedIds.includes(id) ? s.selectedIds.filter((x) => x !== id) : [...s.selectedIds, id] })),
+    selectAll: () => set((s) => ({ selectedIds: s.objects.map((o) => o.id), tool: "select" })),
+    setMarquee: (marquee) => set({ marquee }),
 
     applyColor: (color) => {
       const draft = get().textDraft;
@@ -245,8 +285,7 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
         set({ textDraft: { ...draft, color }, penColor: color, recentColors });
         return;
       }
-      const selected = selectedObject();
-      if (selected && selected.kind !== "image") {
+      if (selectedObjects().some((o) => o.kind !== "image")) {
         restyleSelected((o) => (o.kind === "image" ? o : { ...o, color }), false);
         set({ recentColors });
         return;
@@ -256,7 +295,7 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
         recentColors,
         // Picking a colour while on eraser/hand/select means "I want to draw with this".
         tool: s.tool === "pen" || s.tool === "text" ? s.tool : "pen",
-        selectedId: null,
+        selectedIds: [],
       }));
     },
 
@@ -267,26 +306,23 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
         set({ textDraft: { ...draft, fontSize }, fontSize });
         return;
       }
-      const selected = selectedObject();
-      if (selected?.kind === "stroke") {
-        const width = clamp(Math.round(rawSize), MIN_PEN_WIDTH, MAX_PEN_WIDTH);
-        restyleSelected((o) => (o.kind === "stroke" ? { ...o, width } : o), live);
-        return;
-      }
-      if (selected?.kind === "text") {
-        const fontSize = clampFontSize(rawSize);
-        // Text extent is linear in font size, so it can be rescaled without re-measuring.
+      if (selectedObjects().some((o) => o.kind === "stroke" || o.kind === "text")) {
         restyleSelected((o) => {
-          if (o.kind !== "text") return o;
-          const ratio = fontSize / o.fontSize;
-          return { ...o, fontSize, width: o.width * ratio, height: o.height * ratio };
+          if (o.kind === "stroke") return { ...o, width: clamp(roundHalf(rawSize), MIN_PEN_WIDTH, MAX_PEN_WIDTH) };
+          if (o.kind === "text") {
+            const fontSize = clampFontSize(rawSize);
+            // Text extent is linear in font size, so it can be rescaled without re-measuring.
+            const ratio = fontSize / o.fontSize;
+            return { ...o, fontSize, width: o.width * ratio, height: o.height * ratio };
+          }
+          return o;
         }, live);
         return;
       }
       const { tool } = get();
       if (tool === "text") set({ fontSize: clampFontSize(rawSize) });
       else if (tool === "eraser") set({ eraserSize: clamp(Math.round(rawSize), MIN_ERASER_SIZE, MAX_ERASER_SIZE) });
-      else set({ penWidth: clamp(Math.round(rawSize), MIN_PEN_WIDTH, MAX_PEN_WIDTH) });
+      else set({ penWidth: clamp(roundHalf(rawSize), MIN_PEN_WIDTH, MAX_PEN_WIDTH) });
     },
 
     beginStroke: (point) => {
@@ -319,7 +355,7 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
         .find((o): o is TextObject => o.kind === "text" && rectContains(o, point, TEXT_CLICK_MARGIN));
       textSession += 1;
       set({
-        selectedId: null,
+        selectedIds: [],
         textDraft: existing
           ? {
               session: textSession,
@@ -406,32 +442,65 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
       }),
 
     eraseAt: (point, radius) => {
-      const hit = new Set(objectsHitByEraser(get().objects, point, radius));
-      if (hit.size === 0) return;
-      set((s) => ({ objects: s.objects.filter((o) => !hit.has(o.id)) }));
+      const { objects, eraserMode } = get();
+      if (eraserMode === "object") {
+        const hit = new Set(objectsHitByEraser(objects, point, radius));
+        if (hit.size === 0) return;
+        set((s) => ({ objects: s.objects.filter((o) => !hit.has(o.id)), selectedIds: s.selectedIds.filter((id) => !hit.has(id)) }));
+        return;
+      }
+      // Segment mode only cuts strokes; text and images are left alone.
+      let changed = false;
+      const next: CanvasObject[] = [];
+      for (const object of objects) {
+        const pieces = object.kind === "stroke" ? eraseStroke(object, point, radius, createId) : null;
+        if (pieces === null) next.push(object);
+        else {
+          changed = true;
+          next.push(...pieces);
+        }
+      }
+      if (changed) set((s) => ({ objects: next, selectedIds: keepExistingSelection(next, s.selectedIds) }));
+    },
+
+    eraseAlong: (from, to, radius) => {
+      for (const point of interpolatePoints(from, to, Math.max(radius / 2, 1))) get().eraseAt(point, radius);
     },
 
     replaceObject: (object) =>
       set((s) => ({ objects: s.objects.map((o) => (o.id === object.id ? object : o)) })),
 
+    replaceObjects: (replacements) => {
+      const byId = new Map(replacements.map((o) => [o.id, o]));
+      set((s) => ({ objects: s.objects.map((o) => byId.get(o.id) ?? o) }));
+    },
+
     addImage: (image) => {
       const object: ImageObject = { ...image, id: createId(), kind: "image" };
       commitObjects([...get().objects, object]);
-      set({ tool: "select", selectedId: object.id });
+      set({ tool: "select", selectedIds: [object.id] });
       return object.id;
     },
 
     deleteSelected: () => {
-      const { selectedId, objects } = get();
-      if (!selectedId) return;
-      commitObjects(objects.filter((o) => o.id !== selectedId));
-      set({ selectedId: null });
+      const { selectedIds, objects } = get();
+      if (selectedIds.length === 0) return;
+      commitObjects(objects.filter((o) => !selectedIds.includes(o.id)));
+      set({ selectedIds: [] });
+    },
+
+    duplicateSelected: () => {
+      const selected = selectedObjects();
+      if (selected.length === 0) return;
+      const copies = selected.map((o) => ({ ...translateObject(o, DUPLICATE_OFFSET, DUPLICATE_OFFSET), id: createId() }));
+      commitObjects([...get().objects, ...copies]);
+      set({ selectedIds: copies.map((o) => o.id) });
     },
 
     clear: () => {
       if (get().objects.length === 0) return;
       commitObjects([]);
-      set({ selectedId: null, activeStroke: null, textDraft: null });
+      set({ selectedIds: [], activeStroke: null, textDraft: null });
     },
 
     undo: () => {
@@ -441,7 +510,7 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
       set({
         objects: result.present,
         history: result.history,
-        selectedId: result.present.some((o) => o.id === s.selectedId) ? s.selectedId : null,
+        selectedIds: keepExistingSelection(result.present, s.selectedIds),
       });
     },
 
@@ -452,7 +521,7 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
       set({
         objects: result.present,
         history: result.history,
-        selectedId: result.present.some((o) => o.id === s.selectedId) ? s.selectedId : null,
+        selectedIds: keepExistingSelection(result.present, s.selectedIds),
       });
     },
 
@@ -463,6 +532,44 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
 
     panBy: (dx, dy) => set((s) => ({ viewport: panBy(s.viewport, dx, dy) })),
     zoomAt: (screenPoint, factor) => set((s) => ({ viewport: zoomAt(s.viewport, screenPoint, factor) })),
+
+    zoomStep: (direction) =>
+      set((s) => ({
+        viewport: zoomTo(
+          s.viewport,
+          { x: s.canvasSize.width / 2, y: s.canvasSize.height / 2 },
+          nextZoomStop(s.viewport.scale, direction),
+        ),
+      })),
+
+    resetZoom: () =>
+      set((s) => ({ viewport: zoomTo(s.viewport, { x: s.canvasSize.width / 2, y: s.canvasSize.height / 2 }, 1) })),
+
+    fitContent: () =>
+      set((s) => ({ viewport: fitViewport(contentBounds(s.objects, 0), s.canvasSize, FIT_PADDING_PX) })),
+
     resetView: () => set({ viewport: INITIAL_VIEWPORT }),
   };
+});
+
+// Remember drawing preferences between sessions (changes to anything else are ignored).
+useWhiteboardStore.subscribe((s, prev) => {
+  if (
+    s.penColor === prev.penColor &&
+    s.penWidth === prev.penWidth &&
+    s.fontSize === prev.fontSize &&
+    s.eraserSize === prev.eraserSize &&
+    s.eraserMode === prev.eraserMode &&
+    s.recentColors === prev.recentColors
+  ) {
+    return;
+  }
+  saveToolPrefs({
+    penColor: s.penColor,
+    penWidth: s.penWidth,
+    fontSize: s.fontSize,
+    eraserSize: s.eraserSize,
+    eraserMode: s.eraserMode,
+    recentColors: s.recentColors,
+  });
 });

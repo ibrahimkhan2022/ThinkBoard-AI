@@ -1,5 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radius } from "../../lib/theme";
+import { useModalGuard } from "../overlays/overlayStore";
 
 interface Props {
   visible: boolean;
@@ -12,6 +13,7 @@ interface Props {
 
 /** In-app confirmation (Alert.alert does nothing on web). */
 export function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCancel }: Props) {
+  useModalGuard(visible);
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
