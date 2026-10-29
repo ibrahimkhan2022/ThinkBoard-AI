@@ -44,16 +44,34 @@ export const TutorResponseSchema = z.object({
 });
 export type TutorResponse = z.infer<typeof TutorResponseSchema>;
 
-export const TutorRequestSchema = z.object({
-  sessionId: z.string().min(1).max(100),
-  mode: TutorModeSchema,
-  question: z.string().max(2000).optional(),
-  /** Canvas rectangle the image was exported from; needed to map highlights back. */
-  region: RectSchema,
-  /** Base64 image of `region`. Optional until canvas export exists (Phase 2). */
-  imageBase64: z.string().optional(),
-  imageMimeType: z.enum(["image/png", "image/jpeg"]).optional(),
-});
+/** Canned "check my work" outcomes the mock provider can play back. */
+export const MOCK_SCENARIOS = [
+  "distribution_error",
+  "arithmetic_error",
+  "missing_steps",
+  "correct",
+  "unclear_handwriting",
+] as const;
+export const MockScenarioSchema = z.enum(MOCK_SCENARIOS);
+export type MockScenario = z.infer<typeof MockScenarioSchema>;
+
+export const TutorRequestSchema = z
+  .object({
+    sessionId: z.string().min(1).max(100),
+    mode: TutorModeSchema,
+    question: z.string().max(2000).optional(),
+    /** Canvas rectangle the image was exported from; needed to map highlights back. */
+    region: RectSchema,
+    /** Base64 image of `region` (what the model sees). Omitted when there is nothing to show. */
+    imageBase64: z.string().max(7_000_000).optional(),
+    imageMimeType: z.enum(["image/png", "image/jpeg"]).optional(),
+    /** Test aid: only the mock provider reads this; real providers ignore it. */
+    mockScenario: MockScenarioSchema.optional(),
+  })
+  .refine((r) => !r.imageBase64 || r.imageMimeType, {
+    message: "imageMimeType is required when imageBase64 is present",
+    path: ["imageMimeType"],
+  });
 export type TutorRequest = z.infer<typeof TutorRequestSchema>;
 
 export const PROVIDER_NAMES = ["mock", "ollama", "meta"] as const;

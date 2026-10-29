@@ -1,6 +1,6 @@
 # ThinkBoard AI
 
-An AI whiteboard tutor for students (hackathon project). Phase 1: Skia whiteboard on the web plus a mock AI tutor. See [PROGRESS.md](PROGRESS.md) and [COSTS.md](COSTS.md).
+An AI whiteboard tutor for students (hackathon project). Whiteboard (Skia, web first) plus a mock-first AI tutor that sends the board region and highlights its answer. See [PROGRESS.md](PROGRESS.md) and [COSTS.md](COSTS.md).
 
 ## Run locally
 

@@ -1,4 +1,5 @@
 import { StyleSheet, View } from "react-native";
+import { AnnotationChip } from "../annotations/AnnotationChip";
 import { Toolbar } from "./Toolbar";
 import WhiteboardLoader from "./WhiteboardLoader";
 import { ZoomControls } from "./ZoomControls";
@@ -9,6 +10,7 @@ export function WhiteboardView() {
     <View style={styles.root}>
       <WhiteboardLoader />
       <ZoomControls />
+      <AnnotationChip />
       <Toolbar />
     </View>
   );

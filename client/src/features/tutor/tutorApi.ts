@@ -5,6 +5,18 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 export class TutorApiError extends Error {}
 
+/** Whether the backend is currently serving canned mock responses. Null if it cannot be reached. */
+export async function fetchIsMock(): Promise<boolean | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/health`);
+    if (!res.ok) return null;
+    const body: unknown = await res.json();
+    return typeof body === "object" && body !== null && "isMock" in body ? Boolean(body.isMock) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Calls the backend and validates the reply; never talks to a model directly. */
 export async function requestTutor(request: TutorRequest): Promise<TutorResult> {
   const controller = new AbortController();

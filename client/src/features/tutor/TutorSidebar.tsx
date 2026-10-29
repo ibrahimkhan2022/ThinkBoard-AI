@@ -1,14 +1,45 @@
-import { useState } from "react";
+import { MOCK_SCENARIOS, type MockScenario } from "@thinkboard/shared";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, radius } from "../../lib/theme";
+import { chooseAIRegion } from "../whiteboard/logic/aiRegion";
+import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
 import { MODE_ACTIONS } from "./tutorModes";
 import { TutorResponseCard } from "./TutorResponseCard";
 import { useTutorStore } from "./tutorStore";
 
+const SCENARIO_LABELS: Record<MockScenario, string> = {
+  distribution_error: "Distribution error",
+  arithmetic_error: "Arithmetic error",
+  missing_steps: "Missing steps",
+  correct: "Correct",
+  unclear_handwriting: "Unclear handwriting",
+};
+
+const SCOPE_TEXT = {
+  selection: "Looking at: your selection",
+  view: "Looking at: what is on screen",
+  none: "Nothing on screen yet. Write or draw something for the tutor to look at.",
+} as const;
+
 export function TutorSidebar({ onClose }: { onClose: () => void }) {
-  const { status, result, error, ask } = useTutorStore();
+  const { status, result, error, ask, capture, outcome, serverIsMock, mockScenario, setMockScenario, loadServerInfo } =
+    useTutorStore();
   const [question, setQuestion] = useState("");
   const loading = status === "loading";
+
+  const objects = useWhiteboardStore((s) => s.objects);
+  const selectedId = useWhiteboardStore((s) => s.selectedId);
+  const viewport = useWhiteboardStore((s) => s.viewport);
+  const canvasSize = useWhiteboardStore((s) => s.canvasSize);
+  const scope = useMemo(
+    () => chooseAIRegion(objects, selectedId, viewport, canvasSize)?.source ?? "none",
+    [objects, selectedId, viewport, canvasSize],
+  );
+
+  useEffect(() => {
+    void loadServerInfo();
+  }, [loadServerInfo]);
 
   const submitQuestion = () => {
     if (!question.trim() || loading) return;
@@ -26,6 +57,7 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.scope}>{SCOPE_TEXT[scope]}</Text>
         <View style={styles.actions}>
           {MODE_ACTIONS.map(({ mode, label }) => (
             <Pressable
@@ -39,6 +71,27 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
           ))}
         </View>
 
+        {serverIsMock && (
+          <View style={styles.scenarios}>
+            <Text style={styles.scenariosLabel}>Mock scenario for “Check my work” (testing only)</Text>
+            <View style={styles.chips}>
+              {MOCK_SCENARIOS.map((scenario) => (
+                <Pressable
+                  key={scenario}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: mockScenario === scenario }}
+                  onPress={() => setMockScenario(scenario)}
+                  style={[styles.chip, mockScenario === scenario && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, mockScenario === scenario && styles.chipTextActive]}>
+                    {SCENARIO_LABELS[scenario]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+
         {loading && (
           <View style={styles.loading}>
             <ActivityIndicator color={colors.accent} />
@@ -50,7 +103,7 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
-        {!loading && result && <TutorResponseCard result={result} />}
+        {!loading && result && <TutorResponseCard result={result} outcome={outcome} capture={capture} />}
         {status === "idle" && (
           <Text style={styles.muted}>
             Write a problem on the board, then pick an action. Hints come first; answers only when you ask.
@@ -97,6 +150,14 @@ const styles = StyleSheet.create({
   iconButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center", borderRadius: radius.sm },
   iconText: { color: colors.muted, fontSize: 22, lineHeight: 24 },
   content: { padding: 16, gap: 14 },
+  scope: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  scenarios: { gap: 6 },
+  scenariosLabel: { color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  chipActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  chipText: { color: colors.text, fontSize: 12 },
+  chipTextActive: { color: colors.accent, fontWeight: "700" },
   actions: { gap: 8 },
   action: {
     paddingVertical: 11,

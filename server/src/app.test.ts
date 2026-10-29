@@ -63,6 +63,33 @@ describe("HTTP API", () => {
     expect(res.json().error).toBe("invalid_request");
   });
 
+  it("accepts an image with its mime type and plays back the requested mock scenario", async () => {
+    const app = await buildServer(config);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/tutor",
+      payload: { ...validBody, imageBase64: "iVBORw0KGgo=", imageMimeType: "image/png", mockScenario: "correct" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(TutorResultSchema.parse(res.json()).response.status).toBe("correct");
+  });
+
+  it("rejects an image without a mime type", async () => {
+    const app = await buildServer(config);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/tutor",
+      payload: { ...validBody, imageBase64: "iVBORw0KGgo=" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects an unknown mock scenario", async () => {
+    const app = await buildServer(config);
+    const res = await app.inject({ method: "POST", url: "/api/tutor", payload: { ...validBody, mockScenario: "nope" } });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("rejects malformed provider output with 502 instead of forwarding it", async () => {
     const broken: AIProvider = {
       name: "mock",
