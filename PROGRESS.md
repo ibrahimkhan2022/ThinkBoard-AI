@@ -69,13 +69,40 @@ Deadline: public web demo by **November 4, 2026, 9:00 PM ET**.
 - Dev-only `window.__whiteboard` / `__prepareImage` handles exist for console debugging (guarded by `__DEV__`).
 - A stray UTF-16 line (`# ThinkBoard-AI`) was appended to `README.md` outside this work; worth cleaning.
 
-## Next: Phase 3 — AI integration (mock first)
-1. Richer mock scenarios (correct, distribution error, arithmetic error, missing steps, hint, start) with highlight coordinates.
-2. Send an exported region (`renderRegion`, ≤ ~1568px) with each AI action; honour selection/visible region.
-3. Render highlight in a separate AI-annotation layer (normalized 0–1000 → canvas via `normalizedBoxToCanvasRect`), never in the student's objects or exports; fall back to text when confidence is low.
-4. Tests for annotation conversion with pan/zoom and cropped regions.
+## Phase 3 — AI integration, mock first (done 2026-10-28)
+
+### Built
+- **Mock scenarios** for "Check my work" on 2(x + 3) = 14: distribution error, arithmetic error, missing steps, correct, unclear handwriting. A `mockScenario` request field selects one (only the mock provider reads it); the sidebar shows a "testing only" picker when `/api/health` says the server is mock. `hint`, `start` etc. keep one canned reply per mode.
+- **Region capture:** each AI action exports the board with `renderRegion` (PNG, longest edge ≤ 1568px) and sends it with the exact canvas `region`. `chooseAIRegion` picks the selection if there is one, else the content on screen cropped to what is drawn there (40 units padding, min 200). Nothing on screen → the request is not sent and the student is told why. A plain question with no board content is sent without an image. The sidebar always says what the tutor will look at, and the card says what was sent.
+- **Annotation layer:** the highlight lives in its own store (`features/annotations`) and is drawn by `AnnotationOverlay` inside the viewport transform. It is not in `objects`, undo history, or exports (`renderRegion` only draws student objects). A chip on the board has "Hide", and the mock chip says its position is canned.
+- **Honesty rules:** `resolveAnnotation` draws a box only if the response has a location, confidence ≥ 0.6 (missing counts as low), and status is not `correct`/`uncertain`; otherwise text only, with a note in the card when a returned location was withheld. The box is mapped with the region captured at request time, so later pan/zoom does not misplace it.
+
+### Verified
+| Check | Result |
+|---|---|
+| `npm run typecheck` | pass |
+| `npm test`: shared 5, server 32, client 59 | 96 pass |
+| Server: scenario schema validity, distinct statuses and lines, low-confidence pairing; image requires mime type; unknown scenario → 400 | automated |
+| Client: normalized → canvas mapping in a cropped region, round-trip, confidence/status gating, region choice (selection, view, off-screen, clipped, minimum size) | automated |
+| Browser: strokes → Check my work → orange box drawn over the board at the mapped position | observed working |
+| Browser: request captured at 150% zoom + pan: region 322×307 (clipped to visible area), PNG 644×614, ≈9 KB base64, `mockScenario` sent | observed working |
+| Browser: Unclear handwriting → no box, no chip, "not confident enough" note shown | observed working |
+| Browser: Hide removes the box; `objects` count unchanged by highlights | observed working |
+| Browser: selected stroke → sidebar says "your selection", region = that stroke + padding | observed working |
+| Browser: panned away from all content → no request sent, friendly message | observed working |
+
+### Not verified / known gaps
+- **The mock cannot read the image.** Its highlight positions are fixed fractions of the exported region, so a box shows the pipeline works, not that a mistake was found. Real accuracy is untested until Phase 4.
+- Highlight does not follow edits: it marks the board as it was when asked (chip text says so) until hidden or the next request.
+- Exported PNG was not re-decoded this phase to prove the box is absent; that follows from `renderRegion` drawing only student objects.
+- Selection persists after switching tools, so "selection" can be a leftover choice; the sidebar line shows it.
+- Native (iOS/Android) not tested; the region image path uses the same Skia code.
+- Image size/cost for real providers (Ollama/Meta token use) not measured; Phase 4.
+
+## Next: Phase 4 — Real AI
+1. Ollama provider (local vision model), selectable with `AI_PROVIDER=ollama`; contract tests against the same suite.
+2. Meta provider behind `ENABLE_PAID_AI`, with a server-side budget gate (per-session and daily call caps, conservative estimates, clearly labelled as estimates) and a usage dashboard. No paid call without an explicit click.
+3. math.js verification of algebra steps so the UI can distinguish "AI says" from "checked".
 
 ## Later
-- Phase 3: richer mock scenarios, send exported region, render highlight in a separate annotation layer.
-- Phase 4: Ollama provider, Meta provider + server-side budget gate + usage dashboard (paid calls stay off by default).
 - Phase 5: session save/restore, polish, deployment, demo script.

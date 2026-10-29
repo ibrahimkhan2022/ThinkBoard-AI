@@ -3,6 +3,7 @@ import { useMemo, useRef, type ComponentRef } from "react";
 import { Platform, StyleSheet, View, type LayoutChangeEvent, type ViewStyle } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import { colors } from "../../lib/theme";
+import { AnnotationOverlay } from "../annotations/AnnotationOverlay";
 import { prepareImage } from "./import/prepareImage";
 import { ImageView } from "./ImageView";
 import { SelectionOverlay } from "./SelectionOverlay";
@@ -50,6 +51,7 @@ export default function WhiteboardCanvas() {
             {objects.map((o) => (o.kind === "image" ? <ImageView key={o.id} image={o} /> : null))}
             {objects.map((o) => (o.kind === "stroke" ? <StrokeView key={o.id} stroke={o} /> : null))}
             {activeStroke && <StrokeView stroke={activeStroke} />}
+            <AnnotationOverlay scale={viewport.scale} />
             {selected && <SelectionOverlay object={selected} scale={viewport.scale} />}
           </Group>
         </Canvas>

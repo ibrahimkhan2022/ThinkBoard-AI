@@ -1,11 +1,24 @@
 import type { TutorResult } from "@thinkboard/shared";
 import { StyleSheet, Text, View } from "react-native";
 import { colors, radius } from "../../lib/theme";
+import { NO_HIGHLIGHT_NOTE, type AnnotationOutcome } from "../annotations/resolveAnnotation";
 import { STATUS_DISPLAY } from "./tutorModes";
+import type { CaptureInfo } from "./tutorStore";
 
-export function TutorResponseCard({ result }: { result: TutorResult }) {
+const SOURCE_LABEL = { selection: "your selection", view: "what was on screen", none: "no board image" } as const;
+
+export function TutorResponseCard({
+  result,
+  outcome,
+  capture,
+}: {
+  result: TutorResult;
+  outcome: AnnotationOutcome | null;
+  capture: CaptureInfo | null;
+}) {
   const { response, meta } = result;
   const status = STATUS_DISPLAY[response.status];
+  const noHighlightNote = outcome?.kind === "none" ? NO_HIGHLIGHT_NOTE[outcome.reason] : undefined;
 
   return (
     <View style={styles.card}>
@@ -20,6 +33,11 @@ export function TutorResponseCard({ result }: { result: TutorResult }) {
       </View>
 
       <Text style={styles.message}>{response.message}</Text>
+
+      {outcome?.kind === "highlight" && (
+        <Text style={styles.markNote}>Marked on your board with an orange box. Hide it from the board any time.</Text>
+      )}
+      {noHighlightNote && <Text style={styles.note}>{noHighlightNote}</Text>}
 
       {response.hint && (
         <View style={styles.section}>
@@ -37,6 +55,8 @@ export function TutorResponseCard({ result }: { result: TutorResult }) {
       <Text style={styles.footnote}>
         AI suggestion · not verified by a math checker
         {response.confidence !== undefined ? ` · confidence ${Math.round(response.confidence * 100)}%` : ""}
+        {capture ? ` · looked at ${SOURCE_LABEL[capture.source]}` : ""}
+        {capture?.pixelWidth ? ` (${capture.pixelWidth}×${capture.pixelHeight}px)` : ""}
       </Text>
     </View>
   );
@@ -65,4 +85,6 @@ const styles = StyleSheet.create({
   sectionLabel: { color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
   body: { color: colors.text, fontSize: 14, lineHeight: 20 },
   footnote: { color: colors.muted, fontSize: 11 },
+  markNote: { color: colors.warning, fontSize: 12, lineHeight: 17 },
+  note: { color: colors.muted, fontSize: 12, lineHeight: 17, fontStyle: "italic" },
 });

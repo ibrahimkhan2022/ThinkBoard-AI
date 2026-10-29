@@ -1,4 +1,4 @@
-import { TutorResponseSchema, TUTOR_MODES, type TutorRequest } from "@thinkboard/shared";
+import { MOCK_SCENARIOS, TutorResponseSchema, TUTOR_MODES, type MockScenario, type TutorRequest } from "@thinkboard/shared";
 import { describe, expect, it } from "vitest";
 import type { AIProvider } from "./types";
 import { MockProvider } from "./mock";
@@ -40,6 +40,51 @@ describe("mock provider specifics", () => {
     const response = await new MockProvider(0).analyze({ ...baseRequest, mode: "check_work" });
     expect(response.status).toBe("error_found");
     expect(response.highlight).toBeDefined();
+  });
+
+  describe("check_work scenarios", () => {
+    const run = (mockScenario: MockScenario) =>
+      new MockProvider(0).analyze({ ...baseRequest, mode: "check_work", mockScenario });
+
+    for (const scenario of MOCK_SCENARIOS) {
+      it(`"${scenario}" is schema-valid and never reveals the answer`, async () => {
+        const response = await run(scenario);
+        expect(TutorResponseSchema.safeParse(response).success).toBe(true);
+        expect(response.revealAnswer).toBe(false);
+      });
+    }
+
+    it("covers the distinct statuses the UI must handle", async () => {
+      expect((await run("distribution_error")).status).toBe("error_found");
+      expect((await run("arithmetic_error")).status).toBe("error_found");
+      expect((await run("missing_steps")).status).toBe("incomplete");
+      expect((await run("correct")).status).toBe("correct");
+      expect((await run("unclear_handwriting")).status).toBe("uncertain");
+    });
+
+    it("points at different lines for different errors", async () => {
+      const a = (await run("distribution_error")).highlight;
+      const b = (await run("arithmetic_error")).highlight;
+      expect(a).toBeDefined();
+      expect(b).toBeDefined();
+      expect(a!.yMin).not.toBe(b!.yMin);
+      expect((await run("distribution_error")).errorStep).toBeLessThan((await run("arithmetic_error")).errorStep!);
+    });
+
+    it("returns no highlight when the work is correct", async () => {
+      expect((await run("correct")).highlight).toBeUndefined();
+    });
+
+    it("pairs the unclear-handwriting highlight with low confidence", async () => {
+      const response = await run("unclear_handwriting");
+      expect(response.highlight).toBeDefined();
+      expect(response.confidence).toBeLessThan(0.5);
+    });
+
+    it("ignores the scenario for other modes", async () => {
+      const hint = await new MockProvider(0).analyze({ ...baseRequest, mode: "hint", mockScenario: "correct" });
+      expect(hint.status).toBe("incomplete");
+    });
   });
 
   it("does not leak shared state between calls", async () => {
