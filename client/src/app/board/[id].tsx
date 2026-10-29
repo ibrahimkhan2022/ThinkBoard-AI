@@ -4,14 +4,19 @@ import { BoardHeader } from "../../features/boards/BoardHeader";
 import { boardStorage } from "../../features/boards/storage";
 import { useBoardPersistence } from "../../features/boards/useBoardPersistence";
 import { WorkspaceLayout } from "../../features/layout/WorkspaceLayout";
+import { useShortcuts } from "../../features/shortcuts/useShortcuts";
 import { BoardActions } from "../../features/whiteboard/BoardActions";
+import { useImportImage } from "../../features/whiteboard/import/useImportImage";
+import { UndoRedo } from "../../features/whiteboard/UndoRedo";
 import { WhiteboardView } from "../../features/whiteboard/WhiteboardView";
 import { colors, radius } from "../../lib/theme";
 
 export default function BoardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { status } = useBoardPersistence(id);
+  const { status, retry } = useBoardPersistence(id);
+  const importImage = useImportImage();
+  useShortcuts(importImage); // the one global keyboard handler
 
   if (status === "loading") {
     return (
@@ -34,7 +39,11 @@ export default function BoardScreen() {
   }
 
   return (
-    <WorkspaceLayout leading={<BoardHeader status={status} persistent={boardStorage.persistent} />} actions={<BoardActions />}>
+    <WorkspaceLayout
+      left={<BoardHeader status={status} persistent={boardStorage.persistent} onRetry={retry} />}
+      center={<UndoRedo />}
+      right={<BoardActions />}
+    >
       <WhiteboardView />
     </WorkspaceLayout>
   );

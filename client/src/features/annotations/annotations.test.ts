@@ -108,7 +108,7 @@ describe("annotation stays on the work after pan and zoom", () => {
     const size = { width: 1000, height: 600 };
     // A line of work at world (1100..1500, 600..700), well away from the origin.
     const objects: CanvasObject[] = [stroke("a", 1100, 600, 400, 100)];
-    const picked = chooseAIRegion(objects, null, viewport, size);
+    const picked = chooseAIRegion(objects, [], viewport, size);
     expect(picked).not.toBeNull();
     const region = picked!.region;
 
@@ -128,21 +128,21 @@ describe("chooseAIRegion", () => {
   const identity = { x: 0, y: 0, scale: 1 };
 
   it("returns null for an empty board", () => {
-    expect(chooseAIRegion([], null, identity, size)).toBeNull();
+    expect(chooseAIRegion([], [], identity, size)).toBeNull();
   });
 
   it("returns null when nothing is on screen", () => {
     const far = [stroke("far", 5000, 5000, 100, 100)];
-    expect(chooseAIRegion(far, null, identity, size)).toBeNull();
+    expect(chooseAIRegion(far, [], identity, size)).toBeNull();
   });
 
   it("returns null before the canvas has a size", () => {
-    expect(chooseAIRegion([stroke("a", 10, 10, 50, 50)], null, identity, { width: 0, height: 0 })).toBeNull();
+    expect(chooseAIRegion([stroke("a", 10, 10, 50, 50)], [], identity, { width: 0, height: 0 })).toBeNull();
   });
 
   it("crops the view to the content with padding", () => {
     const objects = [stroke("a", 100, 100, 300, 100)];
-    const picked = chooseAIRegion(objects, null, identity, size)!;
+    const picked = chooseAIRegion(objects, [], identity, size)!;
     expect(picked.source).toBe("view");
     expect(picked.region.x).toBeLessThanOrEqual(100 - AI_REGION_PADDING + 4);
     expect(picked.region.width).toBeLessThan(size.width);
@@ -151,25 +151,25 @@ describe("chooseAIRegion", () => {
 
   it("never exceeds the visible area when content is partly off screen", () => {
     const objects = [stroke("a", 800, 400, 1000, 1000)];
-    const { region } = chooseAIRegion(objects, null, identity, size)!;
+    const { region } = chooseAIRegion(objects, [], identity, size)!;
     expect(region.x + region.width).toBeLessThanOrEqual(size.width + 1e-6);
     expect(region.y + region.height).toBeLessThanOrEqual(size.height + 1e-6);
   });
 
   it("follows the viewport: the same content gives a different region once panned", () => {
     const objects = [stroke("a", 100, 100, 300, 100)];
-    const panned = chooseAIRegion(objects, null, { x: -50, y: -20, scale: 1 }, size)!;
-    const home = chooseAIRegion(objects, null, identity, size)!;
+    const panned = chooseAIRegion(objects, [], { x: -50, y: -20, scale: 1 }, size)!;
+    const home = chooseAIRegion(objects, [], identity, size)!;
     expect(panned.region).toBeDefined();
     expect(panned.region.x).toBeCloseTo(home.region.x);
     // Zoomed so the content sits partly outside the view: the region is clipped to the visible part.
-    const zoomed = chooseAIRegion(objects, null, { x: -300, y: 0, scale: 2 }, size)!;
+    const zoomed = chooseAIRegion(objects, [], { x: -300, y: 0, scale: 2 }, size)!;
     expect(zoomed.region.x).toBeGreaterThanOrEqual(150 - 1e-6);
   });
 
   it("prefers the selection over the view", () => {
     const objects = [stroke("a", 100, 100, 300, 100), stroke("b", 600, 300, 200, 100)];
-    const picked = chooseAIRegion(objects, "b", identity, size)!;
+    const picked = chooseAIRegion(objects, ["b"], identity, size)!;
     expect(picked.source).toBe("selection");
     expect(picked.region.x).toBeLessThanOrEqual(600);
     expect(picked.region.x + picked.region.width).toBeGreaterThanOrEqual(800);
@@ -178,17 +178,17 @@ describe("chooseAIRegion", () => {
 
   it("selects an off-screen object too", () => {
     const objects = [stroke("far", 5000, 5000, 100, 100)];
-    expect(chooseAIRegion(objects, "far", identity, size)?.source).toBe("selection");
+    expect(chooseAIRegion(objects, ["far"], identity, size)?.source).toBe("selection");
   });
 
   it("ignores a stale selection id", () => {
     const objects = [stroke("a", 100, 100, 300, 100)];
-    expect(chooseAIRegion(objects, "gone", identity, size)?.source).toBe("view");
+    expect(chooseAIRegion(objects, ["gone"], identity, size)?.source).toBe("view");
   });
 
   it("grows a tiny selection to the minimum size, centred on it", () => {
     const objects = [stroke("dot", 500, 500, 1, 1)];
-    const { region } = chooseAIRegion(objects, "dot", identity, size)!;
+    const { region } = chooseAIRegion(objects, ["dot"], identity, size)!;
     expect(region.width).toBeGreaterThanOrEqual(AI_REGION_MIN_SIZE);
     expect(region.height).toBeGreaterThanOrEqual(AI_REGION_MIN_SIZE);
     expect(region.x + region.width / 2).toBeCloseTo(500.5, 0);

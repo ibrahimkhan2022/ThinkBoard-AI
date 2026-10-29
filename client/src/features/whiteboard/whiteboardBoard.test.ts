@@ -144,7 +144,7 @@ describe("colour and size targets", () => {
   });
 
   it("recolours the selected stroke as one undo step and does not change the pen", () => {
-    useWhiteboardStore.setState({ objects: [stroke("a")], tool: "select", selectedId: "a" });
+    useWhiteboardStore.setState({ objects: [stroke("a")], tool: "select", selectedIds: ["a"] });
     get().applyColor("#D92D20");
     expect(get().objects[0]).toMatchObject({ color: "#D92D20" });
     expect(get().penColor).toBe(initial.penColor);
@@ -153,7 +153,7 @@ describe("colour and size targets", () => {
   });
 
   it("resizes a selected stroke; live changes need a transaction to be one step", () => {
-    useWhiteboardStore.setState({ objects: [stroke("a")], tool: "select", selectedId: "a" });
+    useWhiteboardStore.setState({ objects: [stroke("a")], tool: "select", selectedIds: ["a"] });
     get().beginTransaction();
     for (const w of [6, 9, 14]) get().applySize(w, { live: true });
     get().endTransaction();
@@ -165,7 +165,7 @@ describe("colour and size targets", () => {
 
   it("rescales selected text extent with its font size", () => {
     typeText({ x: 0, y: 0 }, "abc", { width: 60, height: 40 });
-    useWhiteboardStore.setState({ tool: "select", selectedId: get().objects[0].id });
+    useWhiteboardStore.setState({ tool: "select", selectedIds: [get().objects[0].id] });
     const before = get().objects[0] as TextObject;
     get().applySize(before.fontSize * 2);
     const after = get().objects[0] as TextObject;
@@ -213,7 +213,7 @@ describe("loading a board", () => {
     expect(get().objects).toEqual(board.objects);
     expect(get().history.past).toHaveLength(0);
     expect(get().textDraft).toBeNull();
-    expect(get().selectedId).toBeNull();
+    expect(get().selectedIds).toEqual([]);
   });
 
   it("cannot undo past the loaded board", () => {

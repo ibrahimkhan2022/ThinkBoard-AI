@@ -5,12 +5,13 @@ import { colors, radius } from "../../lib/theme";
 import { ColorInput } from "./ColorInput";
 import { parseHexColor } from "./logic/color";
 import { RangeInput } from "./RangeInput";
-import { PEN_COLORS, selectStyleTarget, useWhiteboardStore } from "./whiteboardStore";
+import { ERASER_SIZES, PEN_COLORS, PEN_WIDTHS, selectStyleTarget, useWhiteboardStore } from "./whiteboardStore";
 
-const SIZE_PRESETS: Record<string, number[]> = {
-  "Line width": [2, 4, 8, 16, 32],
+const SIZE_PRESETS: Record<string, readonly number[]> = {
+  "Line width": PEN_WIDTHS,
+  Size: [2, 4, 8, 16, 32],
   "Text size": [16, 24, 36, 56, 80],
-  "Eraser size": [6, 10, 20, 40],
+  "Eraser size": ERASER_SIZES,
 };
 
 /** The colour/size controls edit the text being typed, else the selection, else the active tool. */
@@ -166,21 +167,8 @@ export function SizePanel() {
 }
 
 const styles = StyleSheet.create({
-  panel: {
-    gap: 10,
-    width: 300,
-    maxWidth: "100%",
-    padding: 12,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
+  // The surrounding Popover supplies the card; these are just sections inside it.
+  panel: { gap: 10 },
   hint: { color: colors.muted, fontSize: 12 },
   label: { color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
   swatches: { flexDirection: "row", flexWrap: "wrap", gap: 4 },

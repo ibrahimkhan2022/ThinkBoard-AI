@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAnnotationStore } from "../annotations/annotationStore";
 import { useTutorStore } from "../tutor/tutorStore";
 import { contentBounds } from "../whiteboard/logic/exportPlan";
@@ -8,7 +8,7 @@ import { useBoardsStore } from "./boardsStore";
 import { boardStorage } from "./storage";
 import type { BoardDoc, BoardMeta } from "./types";
 
-export type SaveStatus = "loading" | "missing" | "saved" | "saving" | "error";
+export type SaveStatus = "loading" | "missing" | "saved" | "saving" | "unsaved" | "error";
 
 const SAVE_DELAY_MS = 600;
 const THUMBNAIL_DELAY_MS = 2000;
@@ -19,8 +19,10 @@ const THUMBNAIL_SIZE = 360;
  * debounced, flushed when leaving the board or hiding the page, and a small
  * thumbnail for the dashboard is regenerated a little after the last edit.
  */
-export function useBoardPersistence(boardId: string): { status: SaveStatus } {
+export function useBoardPersistence(boardId: string): { status: SaveStatus; retry: () => void } {
   const [status, setStatus] = useState<SaveStatus>("loading");
+  const retryRef = useRef<(() => void) | null>(null);
+  const retry = useCallback(() => retryRef.current?.(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,16 +52,19 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus } {
         objectCount: s.objects.length,
         updatedAt: contentDirty ? Date.now() : meta.updatedAt,
       };
+      const hadContent = contentDirty;
       contentDirty = false;
       viewDirty = false;
       meta = toMeta(doc);
       const saved = meta;
+      if (hadContent) report("saving");
       try {
         await boardStorage.save(doc);
         useBoardsStore.getState().applyMeta(saved);
-        report("saved");
+        // Only claim "saved" if nothing changed while the write was in flight.
+        report(contentDirty ? "unsaved" : "saved");
       } catch {
-        contentDirty = true; // retry on the next change
+        contentDirty = true; // kept dirty so Retry (or the next edit) writes it again
         report("error");
       }
     };
@@ -103,7 +108,7 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus } {
         clearTimeout(thumbnailTimer);
         thumbnailTimer = setTimeout(() => void makeThumbnail(), THUMBNAIL_DELAY_MS);
       }
-      if (content) report("saving");
+      if (content) report("unsaved");
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => void save(), SAVE_DELAY_MS);
     };
@@ -116,6 +121,10 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus } {
       if (document.visibilityState === "hidden") flush();
     };
 
+    retryRef.current = () => {
+      contentDirty = true;
+      void save();
+    };
     const unsubscribe = useWhiteboardStore.subscribe(onChange);
     if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility);
 
@@ -142,6 +151,7 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus } {
 
     return () => {
       cancelled = true;
+      retryRef.current = null;
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility);
       unsubscribe();
       if (ready) flush();
@@ -150,5 +160,5 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus } {
     };
   }, [boardId]);
 
-  return { status };
+  return { status, retry };
 }
