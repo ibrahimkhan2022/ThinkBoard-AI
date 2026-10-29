@@ -5,7 +5,6 @@ import { screenToWorld } from "./logic/viewport";
 import type { Corner, ImageObject, Point, CanvasObject } from "./types";
 import { useWhiteboardStore } from "./whiteboardStore";
 
-const ERASER_RADIUS_PX = 10;
 const SELECT_TOLERANCE_PX = 6;
 
 type Interaction =
@@ -37,11 +36,15 @@ export function useBoardGestures() {
       const { tool, viewport } = store();
 
       if (tool === "pen") {
+        store().commitTextEdit();
         store().beginStroke(world);
         interaction.current = { kind: "draw" };
+      } else if (tool === "text") {
+        store().beginTextEditAt(world);
+        interaction.current = { kind: "none" };
       } else if (tool === "eraser") {
         store().beginTransaction();
-        store().eraseAt(world, ERASER_RADIUS_PX / viewport.scale);
+        store().eraseAt(world, store().eraserSize / viewport.scale);
         interaction.current = { kind: "erase" };
       } else if (tool === "hand") {
         interaction.current = { kind: "pan" };
@@ -74,7 +77,7 @@ export function useBoardGestures() {
           store().extendStroke(world);
           break;
         case "erase":
-          store().eraseAt(world, ERASER_RADIUS_PX / store().viewport.scale);
+          store().eraseAt(world, store().eraserSize / store().viewport.scale);
           break;
         case "pan":
           store().panBy(e.changeX, e.changeY);

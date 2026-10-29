@@ -5,9 +5,13 @@ import { GestureDetector } from "react-native-gesture-handler";
 import { colors } from "../../lib/theme";
 import { AnnotationOverlay } from "../annotations/AnnotationOverlay";
 import { prepareImage } from "./import/prepareImage";
+import { BackgroundLayer } from "./BackgroundLayer";
 import { ImageView } from "./ImageView";
 import { SelectionOverlay } from "./SelectionOverlay";
+import { useTypeface } from "./skiaFont";
 import { StrokeView } from "./StrokeView";
+import { TextEditor } from "./TextEditor";
+import { TextView } from "./TextView";
 import { useBoardGestures } from "./useBoardGestures";
 import { useWebInput } from "./useWebInput";
 import { useWhiteboardStore } from "./whiteboardStore";
@@ -17,7 +21,7 @@ if (__DEV__ && Platform.OS === "web") {
   Object.assign(globalThis, { __whiteboard: useWhiteboardStore, __prepareImage: prepareImage });
 }
 
-const CURSOR = { pen: "crosshair", eraser: "cell", select: "default", hand: "grab" } as const;
+const CURSOR = { pen: "crosshair", eraser: "cell", text: "text", select: "default", hand: "grab" } as const;
 // React Native's types only allow cursor "auto" | "pointer"; React Native Web accepts any CSS cursor.
 const cursorStyle = (tool: keyof typeof CURSOR) => ({ cursor: CURSOR[tool] }) as unknown as ViewStyle;
 
@@ -33,6 +37,10 @@ export default function WhiteboardCanvas() {
   const selectedId = useWhiteboardStore((s) => s.selectedId);
   const tool = useWhiteboardStore((s) => s.tool);
   const setCanvasSize = useWhiteboardStore((s) => s.setCanvasSize);
+  const background = useWhiteboardStore((s) => s.background);
+  const canvasSize = useWhiteboardStore((s) => s.canvasSize);
+  const textDraft = useWhiteboardStore((s) => s.textDraft);
+  const typeface = useTypeface();
 
   const surface = useRef<ComponentRef<typeof View>>(null);
   const gesture = useBoardGestures();
@@ -48,13 +56,23 @@ export default function WhiteboardCanvas() {
       <View ref={surface} style={[styles.surface, cursorStyle(tool)]} onLayout={onLayout}>
         <Canvas style={StyleSheet.absoluteFill}>
           <Group transform={transform}>
+            <BackgroundLayer background={background} viewport={viewport} canvasSize={canvasSize} />
             {objects.map((o) => (o.kind === "image" ? <ImageView key={o.id} image={o} /> : null))}
-            {objects.map((o) => (o.kind === "stroke" ? <StrokeView key={o.id} stroke={o} /> : null))}
+            {objects.map((o) => {
+              if (o.kind === "stroke") return <StrokeView key={o.id} stroke={o} />;
+              // Text being edited is drawn from the draft instead, so it is never doubled.
+              if (o.kind === "text" && o.id !== textDraft?.editingId) {
+                return <TextView key={o.id} object={o} typeface={typeface} />;
+              }
+              return null;
+            })}
             {activeStroke && <StrokeView stroke={activeStroke} />}
+            {textDraft && <TextView object={textDraft} typeface={typeface} />}
             <AnnotationOverlay scale={viewport.scale} />
             {selected && <SelectionOverlay object={selected} scale={viewport.scale} />}
           </Group>
         </Canvas>
+        <TextEditor typeface={typeface} />
       </View>
     </GestureDetector>
   );

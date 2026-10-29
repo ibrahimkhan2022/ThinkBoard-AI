@@ -8,8 +8,8 @@ export interface Point {
 
 /**
  * Canvas objects are plain data with stable ids, in world coordinates.
- * Text joins this union later; AI annotations live in a separate layer so
- * the student's own work is never modified by the tutor.
+ * AI annotations live in a separate layer so the student's own work is never
+ * modified by the tutor.
  */
 export interface StrokeObject {
   id: string;
@@ -26,9 +26,25 @@ export interface ImageObject extends Rect {
   uri: string;
 }
 
-export type CanvasObject = StrokeObject | ImageObject;
+/**
+ * Text is placed by its top-left corner. `width`/`height` are measured with the
+ * real font when the text is committed, so hit testing, selection and export
+ * bounds stay free of any rendering dependency.
+ */
+export interface TextObject extends Rect {
+  id: string;
+  kind: "text";
+  text: string;
+  color: string;
+  fontSize: number;
+}
 
-export type Tool = "pen" | "eraser" | "select" | "hand";
+export type CanvasObject = StrokeObject | ImageObject | TextObject;
+
+export type Tool = "pen" | "eraser" | "text" | "select" | "hand";
+
+export const BACKGROUNDS = ["blank", "dots", "lines", "grid"] as const;
+export type Background = (typeof BACKGROUNDS)[number];
 
 /** screen = world * scale + (x, y) */
 export interface Viewport {

@@ -7,7 +7,7 @@ import {
   objectBounds,
   resizeFromCorner,
   strokeHit,
-  strokesHitByEraser,
+  objectsHitByEraser,
   translateObject,
 } from "./hitTest";
 import { MAX_SCALE, MIN_SCALE, screenToWorld, visibleWorldRect, worldToScreen, zoomAt } from "./viewport";
@@ -116,7 +116,7 @@ describe("hit testing", () => {
 
   it("erases only strokes, never images", () => {
     const img = image("i", 0, -50, 200, 100);
-    expect(strokesHitByEraser([img, line], { x: 50, y: 0 }, 5)).toEqual(["s"]);
+    expect(objectsHitByEraser([img, line], { x: 50, y: 0 }, 5)).toEqual(["s"]);
   });
 
   it("computes stroke bounds including pen width", () => {
