@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radius } from "../../lib/theme";
+import { BackgroundMenu } from "./BackgroundMenu";
 import { exportBoardAsPng } from "./export/exportBoard";
 
 /** Top-bar actions for the current board. */
@@ -25,6 +26,7 @@ export function BoardActions() {
   return (
     <View style={styles.row}>
       {status && <Text style={[styles.status, status.isError && styles.statusError]}>{status.text}</Text>}
+      <BackgroundMenu />
       <Pressable accessibilityRole="button" disabled={busy} onPress={() => void exportImage()} style={[styles.button, busy && styles.disabled]}>
         <Text style={styles.buttonText}>Export PNG</Text>
       </Pressable>

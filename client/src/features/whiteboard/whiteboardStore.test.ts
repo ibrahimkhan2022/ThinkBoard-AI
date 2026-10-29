@@ -43,8 +43,8 @@ describe("drawing", () => {
   });
 
   it("uses the selected pen colour and width", () => {
-    get().setPenColor("#D92D20");
-    get().setPenWidth(8);
+    get().applyColor("#D92D20");
+    get().applySize(8);
     drawStroke([[0, 0], [10, 10]]);
     expect(get().objects[0]).toMatchObject({ color: "#D92D20", width: 8 });
   });

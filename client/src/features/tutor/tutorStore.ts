@@ -31,6 +31,8 @@ interface TutorState {
   mockScenario: MockScenario;
   setMockScenario: (scenario: MockScenario) => void;
   loadServerInfo: () => Promise<void>;
+  /** Forgets the last answer, e.g. when another board is opened. */
+  reset: () => void;
   /** Runs one tutoring action. Only ever called from an explicit user click. */
   ask: (mode: TutorMode, question?: string) => Promise<void>;
 }
@@ -47,6 +49,8 @@ export const useTutorStore = create<TutorState>((set, get) => ({
   serverIsMock: null,
   mockScenario: "distribution_error",
   setMockScenario: (mockScenario) => set({ mockScenario }),
+
+  reset: () => set({ status: "idle", result: null, error: null, capture: null, outcome: null }),
 
   loadServerInfo: async () => {
     set({ serverIsMock: await fetchIsMock() });

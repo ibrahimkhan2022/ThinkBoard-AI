@@ -11,22 +11,35 @@ const SIDEBAR_WIDTH = 380;
  * Narrow screens: the sidebar is a drawer over the board, closed by default
  * so the drawing area keeps the full screen.
  */
-export function WorkspaceLayout({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+export function WorkspaceLayout({
+  children,
+  leading,
+  actions,
+}: {
+  children: ReactNode;
+  /** Left side of the top bar: navigation and the board name. */
+  leading?: ReactNode;
+  actions?: ReactNode;
+}) {
   const { width } = useWindowDimensions();
   const isWide = width >= WIDE_BREAKPOINT;
   const [sidebarOpen, setSidebarOpen] = useState(isWide);
 
   return (
     <View style={styles.root}>
-      <View style={styles.topBar}>
-        {!sidebarOpen && (
-          <Pressable accessibilityLabel="Open tutor panel" onPress={() => setSidebarOpen(true)} style={styles.openButton}>
-            <Text style={styles.openText}>AI Tutor</Text>
-          </Pressable>
-        )}
-        <Text style={styles.docName}>Untitled board</Text>
-        <View style={styles.spacer} />
-        {actions}
+      {/* Narrow screens put the actions on their own row instead of squeezing the board name. */}
+      <View style={[styles.topBar, !isWide && styles.topBarNarrow]}>
+        <View style={styles.topRow}>
+          {!sidebarOpen && (
+            <Pressable accessibilityLabel="Open tutor panel" onPress={() => setSidebarOpen(true)} style={styles.openButton}>
+              <Text style={styles.openText}>AI Tutor</Text>
+            </Pressable>
+          )}
+          {leading}
+          {isWide && <View style={styles.spacer} />}
+          {isWide && actions}
+        </View>
+        {!isWide && actions && <View style={styles.actionsRow}>{actions}</View>}
       </View>
 
       <View style={styles.body}>
@@ -53,6 +66,9 @@ export function WorkspaceLayout({ children, actions }: { children: ReactNode; ac
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  topRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, minWidth: 0 },
+  topBarNarrow: { height: "auto", minHeight: 52, flexDirection: "column", alignItems: "stretch", paddingVertical: 8, gap: 6 },
+  actionsRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center" },
   topBar: {
     height: 52,
     paddingHorizontal: 16,
@@ -62,9 +78,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
+    // Above the board so top-bar dropdowns are not hidden by it.
+    zIndex: 10,
   },
   spacer: { flex: 1 },
-  docName: { color: colors.text, fontSize: 15, fontWeight: "600" },
   openButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,

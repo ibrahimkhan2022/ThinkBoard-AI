@@ -34,7 +34,7 @@ export function rectContains(rect: Rect, p: Point, margin = 0): boolean {
 }
 
 export function objectBounds(object: CanvasObject): Rect {
-  if (object.kind === "image") {
+  if (object.kind === "image" || object.kind === "text") {
     return { x: object.x, y: object.y, width: object.width, height: object.height };
   }
   const half = object.width / 2;
@@ -52,13 +52,14 @@ export function objectBounds(object: CanvasObject): Rect {
 }
 
 /**
- * Topmost object under `p`. Strokes are tested before images because images
- * are always rendered underneath strokes.
+ * Topmost object under `p`. Strokes and text are tested before images because
+ * images are always rendered underneath them.
  */
 export function hitTest(objects: CanvasObject[], p: Point, tolerance: number): CanvasObject | null {
   for (let i = objects.length - 1; i >= 0; i--) {
     const object = objects[i];
     if (object.kind === "stroke" && strokeHit(object, p, tolerance)) return object;
+    if (object.kind === "text" && rectContains(object, p, tolerance)) return object;
   }
   for (let i = objects.length - 1; i >= 0; i--) {
     const object = objects[i];
@@ -67,13 +68,15 @@ export function hitTest(objects: CanvasObject[], p: Point, tolerance: number): C
   return null;
 }
 
-/** Ids of strokes touched by an eraser of `radius` centred on `p`. Images are never erased. */
-export function strokesHitByEraser(objects: CanvasObject[], p: Point, radius: number): string[] {
-  return objects.filter((o) => o.kind === "stroke" && strokeHit(o, p, radius)).map((o) => o.id);
+/** Ids of strokes and text touched by an eraser of `radius` centred on `p`. Images are never erased. */
+export function objectsHitByEraser(objects: CanvasObject[], p: Point, radius: number): string[] {
+  return objects
+    .filter((o) => (o.kind === "stroke" && strokeHit(o, p, radius)) || (o.kind === "text" && rectContains(o, p, radius)))
+    .map((o) => o.id);
 }
 
 export function translateObject<T extends CanvasObject>(object: T, dx: number, dy: number): T {
-  if (object.kind === "image") return { ...object, x: object.x + dx, y: object.y + dy };
+  if (object.kind === "image" || object.kind === "text") return { ...object, x: object.x + dx, y: object.y + dy };
   return { ...object, points: object.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })) };
 }
 

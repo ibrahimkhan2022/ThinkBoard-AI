@@ -99,6 +99,38 @@ Deadline: public web demo by **November 4, 2026, 9:00 PM ET**.
 - Native (iOS/Android) not tested; the region image path uses the same Skia code.
 - Image size/cost for real providers (Ollama/Meta token use) not measured; Phase 4.
 
+## Whiteboard upgrade — boards, backgrounds, text, colours, sizes (done 2026-10-29)
+
+### Built
+- **Dashboard (`/`) and boards (`/board/[id]`):** cards with a preview thumbnail, last-edited time and item count; New, Open, Rename, Duplicate, Delete (with confirmation). Boards open from a link, so a reload returns to the same board.
+- **Saving:** each board is stored in the browser (IndexedDB: a small "meta" store for the dashboard and a separate "content" store for objects). Autosaves 0.6s after an edit, flushes when you leave the board or hide the page, and shows Saving… / Saved / Could not save. Stored data is validated on load, so a damaged object is dropped instead of breaking the board.
+- **Backgrounds:** Blank, Dots, Lines, Grid, per board. The pattern is infinite, pans and zooms with the board, thins out when zoomed out, and is capped at 5,000 elements per frame.
+- **Text tool:** click to type (Esc cancels, click elsewhere commits), click existing text to edit it, move it with Select, erase it with the eraser. Text is drawn by Skia in a bundled font (Inter, SIL OFL, `client/assets/fonts`), so what you type is what is saved, exported and sent to the AI.
+- **Colours:** 12 presets, the browser colour picker, a hex field, and recent colours. Applies to text being typed, else the selected stroke or text, else the active tool.
+- **Sizes:** line width 1–64, text size 8–160, eraser size 4–60, each with −/+, a number field, a slider (web) and presets. Resizing a selected item is one undo step.
+- **AI isolation kept:** the board background is never part of what the AI sees or of exports.
+
+### Verified
+| Check | Result |
+|---|---|
+| `npm run typecheck` | pass |
+| `npm test`: shared 5, server 32, client 130 | 167 pass |
+| `expo export -p web` | builds |
+| Browser: new board, draw, text (real typing), custom hex, size panel, selected-text resize (36→56, one undo step), background Grid | observed working |
+| Browser: reload keeps objects, text sizes and background (IndexedDB) | observed working |
+| Browser: dashboard card with thumbnail; rename from the board header; duplicate; delete with confirmation; deleted board stays gone after reload | observed working |
+| Browser: AI request image at 1280px width contains the blue text and black stroke, zero grid-coloured pixels | observed working |
+| Browser: 375px layout (actions on a second top-bar row, wrapped toolbar, panels above it) | observed working |
+
+### Not verified / known gaps
+- **Native (iOS/Android):** boards are kept in memory only there (the dashboard says so), image downscale and export are still web-only, and the colour picker/slider are web-only (hex field and −/+ work everywhere). Not run on a device.
+- **Hosting:** the app is a single-page build; a host must serve `index.html` for `/board/<id>` URLs (rewrite all paths), or reloading a board will 404.
+- **Boards live in one browser:** no accounts or sync, and clearing site data deletes them. Large imported images make big boards; there is no storage-quota warning yet.
+- **Text:** no wrap or resize handles, one font and no bold/italic; double-click to edit is not implemented (use the Text tool). The editor caret may sit a pixel or two off the drawn glyphs because the visible text is Skia, not the input.
+- **Exports:** Export PNG and the AI image are on white and do not include the background pattern.
+- Real touch/stylus and the colour picker dialog itself (an OS widget) were not driven.
+- Dev-only `window.__whiteboard` is still exposed in dev builds (used for the checks above).
+
 ## Next: Phase 4 — Real AI
 1. Ollama provider (local vision model), selectable with `AI_PROVIDER=ollama`; contract tests against the same suite.
 2. Meta provider behind `ENABLE_PAID_AI`, with a server-side budget gate (per-session and daily call caps, conservative estimates, clearly labelled as estimates) and a usage dashboard. No paid call without an explicit click.

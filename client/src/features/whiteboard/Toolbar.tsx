@@ -3,15 +3,19 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radius } from "../../lib/theme";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { importImageToBoard } from "./import/importImage";
+import { ColorPanel, SizePanel, useStyleTarget } from "./StylePanels";
 import type { Tool } from "./types";
-import { PEN_COLORS, PEN_WIDTHS, useWhiteboardStore } from "./whiteboardStore";
+import { useWhiteboardStore } from "./whiteboardStore";
 
 const TOOLS: { tool: Tool; label: string }[] = [
   { tool: "pen", label: "Pen" },
   { tool: "eraser", label: "Eraser" },
+  { tool: "text", label: "Text" },
   { tool: "select", label: "Select" },
   { tool: "hand", label: "Hand" },
 ];
+
+type Panel = "color" | "size" | null;
 
 function Divider() {
   return <View style={styles.divider} />;
@@ -45,15 +49,17 @@ function TextButton({
 /** Floating tool palette. Wraps onto extra rows on narrow screens instead of shrinking the canvas. */
 export function Toolbar() {
   const tool = useWhiteboardStore((s) => s.tool);
-  const penColor = useWhiteboardStore((s) => s.penColor);
-  const penWidth = useWhiteboardStore((s) => s.penWidth);
   const canUndo = useWhiteboardStore((s) => s.history.past.length > 0);
   const canRedo = useWhiteboardStore((s) => s.history.future.length > 0);
   const hasObjects = useWhiteboardStore((s) => s.objects.length > 0);
-  const { setTool, setPenColor, setPenWidth, undo, redo, clear } = useWhiteboardStore.getState();
+  const { setTool, undo, redo, clear } = useWhiteboardStore.getState();
+  const style = useStyleTarget();
 
+  const [panel, setPanel] = useState<Panel>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const togglePanel = (next: Exclude<Panel, null>) => setPanel((current) => (current === next ? null : next));
 
   const addImage = async () => {
     setMessage(null);
@@ -71,41 +77,33 @@ export function Toolbar() {
           <Text style={styles.messageText}>{message}</Text>
         </Pressable>
       )}
+      {panel === "color" && <ColorPanel />}
+      {panel === "size" && <SizePanel />}
       <View style={styles.bar}>
         <View style={styles.barContent}>
           {TOOLS.map((t) => (
             <TextButton key={t.tool} label={t.label} active={tool === t.tool} onPress={() => setTool(t.tool)} />
           ))}
           <Divider />
-          {PEN_COLORS.map((color) => (
-            <Pressable
-              key={color}
-              accessibilityRole="button"
-              accessibilityLabel={`Colour ${color}`}
-              onPress={() => {
-                setPenColor(color);
-                setTool("pen");
-              }}
-              style={[styles.swatchHit, penColor === color && styles.swatchHitActive]}
-            >
-              <View style={[styles.swatch, { backgroundColor: color }]} />
-            </Pressable>
-          ))}
-          <Divider />
-          {PEN_WIDTHS.map((width) => (
-            <Pressable
-              key={width}
-              accessibilityRole="button"
-              accessibilityLabel={`Brush size ${width}`}
-              onPress={() => {
-                setPenWidth(width);
-                setTool("pen");
-              }}
-              style={[styles.swatchHit, penWidth === width && styles.swatchHitActive]}
-            >
-              <View style={{ width: width + 4, height: width + 4, borderRadius: 99, backgroundColor: colors.text }} />
-            </Pressable>
-          ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Colour"
+            accessibilityState={{ expanded: panel === "color" }}
+            onPress={() => togglePanel("color")}
+            style={[styles.button, styles.styleButton, panel === "color" && styles.buttonActive]}
+          >
+            <View style={[styles.currentColor, { backgroundColor: style.color }]} />
+            <Text style={[styles.buttonText, panel === "color" && styles.buttonTextActive]}>Colour</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${style.sizeLabel} ${style.size}`}
+            accessibilityState={{ expanded: panel === "size" }}
+            onPress={() => togglePanel("size")}
+            style={[styles.button, styles.styleButton, panel === "size" && styles.buttonActive]}
+          >
+            <Text style={[styles.buttonText, panel === "size" && styles.buttonTextActive]}>Size {style.size}</Text>
+          </Pressable>
           <Divider />
           <TextButton label="Image" onPress={() => void addImage()} />
           <Divider />
@@ -147,13 +145,12 @@ const styles = StyleSheet.create({
   barContent: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 4, padding: 6 },
   divider: { width: 1, height: 24, marginHorizontal: 4, backgroundColor: colors.border },
   button: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.sm },
+  styleButton: { flexDirection: "row", alignItems: "center", gap: 6 },
+  currentColor: { width: 16, height: 16, borderRadius: 99, borderWidth: 1, borderColor: colors.border },
   buttonActive: { backgroundColor: colors.accentSoft },
   buttonText: { color: colors.text, fontSize: 13, fontWeight: "600" },
   buttonTextActive: { color: colors.accent },
   disabled: { opacity: 0.35 },
-  swatchHit: { width: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: 99, borderWidth: 2, borderColor: "transparent" },
-  swatchHitActive: { borderColor: colors.accent },
-  swatch: { width: 18, height: 18, borderRadius: 99 },
   message: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.sm, backgroundColor: colors.dangerSoft },
   messageText: { color: colors.danger, fontSize: 13 },
 });
