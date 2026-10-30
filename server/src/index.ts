@@ -7,5 +7,7 @@ import { loadConfig } from "./config";
 loadDotenv({ path: fileURLToPath(new URL("../../.env", import.meta.url)), quiet: true });
 
 const config = loadConfig();
-const app = await buildServer(config);
+// Paid-usage counters live here so a restart cannot reset the daily and budget limits (git-ignored).
+const usageFile = fileURLToPath(new URL("../data/usage.json", import.meta.url));
+const app = await buildServer(config, { usageFile });
 await app.listen({ port: config.PORT, host: config.HOST });

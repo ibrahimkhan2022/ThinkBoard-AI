@@ -6,10 +6,14 @@ import { resolveAnnotation, type AnnotationOutcome } from "../annotations/resolv
 import { chooseAIRegion, type AIRegion } from "../whiteboard/logic/aiRegion";
 import { visibleWorldRect } from "../whiteboard/logic/viewport";
 import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
-import { fetchIsMock, requestTutor } from "./tutorApi";
+import { fetchServerInfo, fetchUsage, requestTutor, type ServerInfo, type UsageInfo } from "./tutorApi";
 
-/** Longest edge of the image sent to the AI: large enough for handwriting, small enough to stay cheap. */
-export const AI_IMAGE_MAX_DIMENSION = 1568;
+/**
+ * Longest edge of the image sent to the AI. Paid models bill by image size
+ * (about 1,300-1,500 tokens at this size), so this is a deliberate trade-off
+ * between legible handwriting and cost.
+ */
+export const AI_IMAGE_MAX_DIMENSION = 1280;
 
 export interface CaptureInfo {
   source: AIRegion["source"] | "none";
@@ -26,8 +30,14 @@ interface TutorState {
   capture: CaptureInfo | null;
   /** Whether the last response was drawn on the board, and why not if it was not. */
   outcome: AnnotationOutcome | null;
-  /** Null until the backend has been asked. Scenario choice only applies to the mock provider. */
-  serverIsMock: boolean | null;
+  /** What the backend is serving; null until it has been asked (or if it is unreachable). */
+  server: ServerInfo | null;
+  /** Estimated spend and limits; only for the paid provider. */
+  usage: UsageInfo | null;
+  /** The student has confirmed that paid AI will be used in this session. Required before any paid call. */
+  paidAcknowledged: boolean;
+  acknowledgePaid: () => void;
+  refreshUsage: () => Promise<void>;
   mockScenario: MockScenario;
   setMockScenario: (scenario: MockScenario) => void;
   loadServerInfo: () => Promise<void>;
@@ -46,18 +56,31 @@ export const useTutorStore = create<TutorState>((set, get) => ({
   error: null,
   capture: null,
   outcome: null,
-  serverIsMock: null,
+  server: null,
+  usage: null,
+  paidAcknowledged: false,
+  acknowledgePaid: () => set({ paidAcknowledged: true }),
+  refreshUsage: async () => {
+    if (!get().server?.paid) return;
+    set({ usage: await fetchUsage(get().sessionId) });
+  },
   mockScenario: "distribution_error",
   setMockScenario: (mockScenario) => set({ mockScenario }),
 
   reset: () => set({ status: "idle", result: null, error: null, capture: null, outcome: null }),
 
   loadServerInfo: async () => {
-    set({ serverIsMock: await fetchIsMock() });
+    set({ server: await fetchServerInfo() });
+    await get().refreshUsage();
   },
 
   ask: async (mode, question) => {
     if (get().status === "loading") return;
+    // Paid AI is only ever used on an explicit click, and only after the student has agreed to it.
+    if (get().server?.paid && !get().paidAcknowledged) {
+      set(fail("Please confirm that you want to use the paid AI tutor first."));
+      return;
+    }
     set({ status: "loading", error: null, outcome: null });
     useAnnotationStore.getState().setAnnotation(null);
 
@@ -73,7 +96,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       mode,
       question: question?.trim() || undefined,
       region: picked?.region ?? fallbackRegion(board.viewport, board.canvasSize),
-      mockScenario: get().serverIsMock ? get().mockScenario : undefined,
+      mockScenario: get().server?.isMock ? get().mockScenario : undefined,
     };
 
     let capture: CaptureInfo = { source: "none" };
@@ -104,6 +127,8 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       set({ status: "success", result, capture, outcome });
     } catch (err) {
       set(fail(err instanceof Error ? err.message : "Something went wrong."));
+    } finally {
+      void get().refreshUsage(); // a refused or failed call still changes the counts
     }
   },
 }));

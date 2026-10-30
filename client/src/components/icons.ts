@@ -16,3 +16,4 @@ export { default as Trash } from "lucide-react-native/icons/trash";
 export { default as PanelLeft } from "lucide-react-native/icons/panel-left";
 export { default as ChevronLeft } from "lucide-react-native/icons/chevron-left";
 export { default as RotateCcw } from "lucide-react-native/icons/rotate-ccw";
+export { default as GripVertical } from "lucide-react-native/icons/grip-vertical";

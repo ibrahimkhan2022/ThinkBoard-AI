@@ -149,12 +149,23 @@ describe("runShortcut", () => {
     expect(useUiStore.getState().aiPanelOpen).toBe(true);
   });
 
-  it("Escape cancels a text draft before touching the selection", () => {
-    useWhiteboardStore.setState({ objects: [stroke("a")], selectedIds: ["a"] });
+  it("Escape finishes a text draft and keeps what was typed, selecting it", () => {
+    useWhiteboardStore.getState().beginTextEditAt({ x: 50, y: 50 });
+    useWhiteboardStore.getState().updateTextDraft({ text: "keep me", width: 80, height: 36 });
+    expect(runShortcut("escape", ctx)).toBe(true);
+    const s = useWhiteboardStore.getState();
+    expect(s.textDraft).toBeNull();
+    expect(s.objects).toHaveLength(1);
+    expect(s.objects[0]).toMatchObject({ kind: "text", text: "keep me" });
+    expect(s.selectedIds).toEqual([s.objects[0].id]);
+    expect(s.tool).toBe("select");
+  });
+
+  it("Escape on an empty text box just closes it", () => {
     useWhiteboardStore.getState().beginTextEditAt({ x: 50, y: 50 });
     runShortcut("escape", ctx);
+    expect(useWhiteboardStore.getState().objects).toHaveLength(0);
     expect(useWhiteboardStore.getState().textDraft).toBeNull();
-    expect(useWhiteboardStore.getState().selectedIds).toEqual([]); // beginTextEditAt cleared it, so nothing was lost by Escape
   });
 
   it("toggles the docked panel on wide screens and the drawer on narrow ones", () => {

@@ -5,6 +5,7 @@ import { colors, radius } from "../../lib/theme";
 import { chooseAIRegion } from "../whiteboard/logic/aiRegion";
 import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
 import { MODE_ACTIONS } from "./tutorModes";
+import { ProviderStatus } from "./ProviderStatus";
 import { TutorResponseCard } from "./TutorResponseCard";
 import { useTutorStore } from "./tutorStore";
 
@@ -23,10 +24,12 @@ const SCOPE_TEXT = {
 } as const;
 
 export function TutorSidebar({ onClose }: { onClose: () => void }) {
-  const { status, result, error, ask, capture, outcome, serverIsMock, mockScenario, setMockScenario, loadServerInfo } =
+  const { status, result, error, ask, capture, outcome, server, paidAcknowledged, mockScenario, setMockScenario, loadServerInfo } =
     useTutorStore();
   const [question, setQuestion] = useState("");
   const loading = status === "loading";
+  // Paid AI stays locked until the student has said yes to it.
+  const locked = loading || (server?.paid === true && !paidAcknowledged);
 
   const objects = useWhiteboardStore((s) => s.objects);
   const selectedIds = useWhiteboardStore((s) => s.selectedIds);
@@ -42,7 +45,7 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
   }, [loadServerInfo]);
 
   const submitQuestion = () => {
-    if (!question.trim() || loading) return;
+    if (!question.trim() || locked) return;
     void ask("ask", question);
     setQuestion("");
   };
@@ -57,21 +60,23 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        <ProviderStatus />
         <Text style={styles.scope}>{SCOPE_TEXT[scope]}</Text>
         <View style={styles.actions}>
           {MODE_ACTIONS.map(({ mode, label }) => (
             <Pressable
               key={mode}
-              disabled={loading}
+              disabled={locked}
+              accessibilityState={{ disabled: locked }}
               onPress={() => void ask(mode)}
-              style={({ pressed }) => [styles.action, pressed && styles.pressed, loading && styles.disabled]}
+              style={({ pressed }) => [styles.action, pressed && styles.pressed, locked && styles.disabled]}
             >
               <Text style={styles.actionText}>{label}</Text>
             </Pressable>
           ))}
         </View>
 
-        {serverIsMock && (
+        {server?.isMock && (
           <View style={styles.scenarios}>
             <Text style={styles.scenariosLabel}>Mock scenario for “Check my work” (testing only)</Text>
             <View style={styles.chips}>
@@ -119,14 +124,14 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
           placeholder="Ask a question…"
           placeholderTextColor={colors.muted}
           style={styles.input}
-          editable={!loading}
+          editable={!locked}
           returnKeyType="send"
         />
         <Pressable
           accessibilityLabel="Send question"
           onPress={submitQuestion}
-          disabled={loading || !question.trim()}
-          style={[styles.send, (loading || !question.trim()) && styles.disabled]}
+          disabled={locked || !question.trim()}
+          style={[styles.send, (locked || !question.trim()) && styles.disabled]}
         >
           <Text style={styles.sendText}>Ask</Text>
         </Pressable>

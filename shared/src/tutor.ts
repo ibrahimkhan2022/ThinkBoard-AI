@@ -77,12 +77,23 @@ export type TutorRequest = z.infer<typeof TutorRequestSchema>;
 export const PROVIDER_NAMES = ["mock", "ollama", "meta"] as const;
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
+/** Token counts reported by the provider for one call, and the cost we estimate from them. */
+export const UsageReportSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  /** Estimated from our price table and reported tokens; not an invoice. 0 for free providers. */
+  estimatedCostUsd: z.number().nonnegative(),
+});
+export type UsageReport = z.infer<typeof UsageReportSchema>;
+
 export const TutorResultSchema = z.object({
   response: TutorResponseSchema,
   meta: z.object({
     provider: z.enum(PROVIDER_NAMES),
     /** True when the response is canned test data, never real analysis. */
     isMock: z.boolean(),
+    /** Present for real providers. Always an estimate. */
+    usage: UsageReportSchema.optional(),
   }),
 });
 export type TutorResult = z.infer<typeof TutorResultSchema>;

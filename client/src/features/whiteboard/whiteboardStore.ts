@@ -4,7 +4,7 @@ import { createId } from "../../lib/ids";
 import { eraseStroke, interpolatePoints } from "./logic/erase";
 import { contentBounds } from "./logic/exportPlan";
 import { commit, emptyHistory, redo, undo, type History } from "./logic/history";
-import { objectsHitByEraser, rectContains, translateObject } from "./logic/hitTest";
+import { objectsHitByEraser, rectContains, topTextAt, translateObject } from "./logic/hitTest";
 import { clampFontSize, DEFAULT_FONT_SIZE, MAX_FONT_SIZE, MIN_FONT_SIZE } from "./logic/textLayout";
 import { FIT_PADDING_PX, fitViewport, INITIAL_VIEWPORT, nextZoomStop, panBy, zoomAt, zoomTo } from "./logic/viewport";
 import { loadToolPrefs, saveToolPrefs, type EraserMode } from "./toolPrefs";
@@ -128,8 +128,15 @@ interface WhiteboardState {
   endStroke: () => void;
 
   beginTextEditAt: (point: Point) => void;
-  updateTextDraft: (patch: Partial<Pick<TextDraft, "text" | "width" | "height">>) => void;
-  commitTextEdit: (session?: number) => void;
+  /**
+   * A press with the Text tool. If a box is open it is just finished (a click
+   * elsewhere never opens another one). Pressing existing text returns it so
+   * the gesture can tell a click (edit) from a drag (move). Empty space starts new text.
+   */
+  pressTextTool: (point: Point) => { kind: "finished" } | { kind: "new" } | { kind: "on-text"; object: TextObject };
+  updateTextDraft: (patch: Partial<Pick<TextDraft, "text" | "width" | "height" | "x" | "y">>) => void;
+  /** Ends editing and keeps the text. With `select`, the text becomes the selection so it can be moved or deleted straight away. */
+  commitTextEdit: (session?: number, options?: { select?: boolean }) => void;
   cancelTextEdit: (session?: number) => void;
 
   /** Wrap multi-step gestures so the whole gesture is one undo step. */
@@ -382,12 +389,23 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
       });
     },
 
+    pressTextTool: (point) => {
+      if (get().textDraft) {
+        get().commitTextEdit();
+        return { kind: "finished" };
+      }
+      const existing = topTextAt(get().objects, point, TEXT_CLICK_MARGIN);
+      if (existing) return { kind: "on-text", object: existing };
+      get().beginTextEditAt(point);
+      return { kind: "new" };
+    },
+
     updateTextDraft: (patch) => {
       const draft = get().textDraft;
       if (draft) set({ textDraft: { ...draft, ...patch } });
     },
 
-    commitTextEdit: (session) => {
+    commitTextEdit: (session, options) => {
       const draft = get().textDraft;
       if (!draft || (session !== undefined && session !== draft.session)) return;
       set({ textDraft: null });
@@ -413,15 +431,18 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
       };
       if (!draft.editingId) {
         commitObjects([...objects, object]);
-        return;
+      } else {
+        const before = objects.find((o) => o.id === draft.editingId);
+        const unchanged =
+          before?.kind === "text" &&
+          before.text === text &&
+          before.color === object.color &&
+          before.fontSize === object.fontSize &&
+          before.x === object.x &&
+          before.y === object.y;
+        if (!unchanged) commitObjects(objects.map((o) => (o.id === object.id ? object : o)));
       }
-      const before = objects.find((o) => o.id === draft.editingId);
-      const unchanged =
-        before?.kind === "text" &&
-        before.text === text &&
-        before.color === object.color &&
-        before.fontSize === object.fontSize;
-      if (!unchanged) commitObjects(objects.map((o) => (o.id === object.id ? object : o)));
+      if (options?.select) set({ tool: "select", selectedIds: [object.id] });
     },
 
     cancelTextEdit: (session) => {

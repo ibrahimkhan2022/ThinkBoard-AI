@@ -55,6 +55,7 @@ export function TutorResponseCard({
       <Text style={styles.footnote}>
         AI suggestion · not verified by a math checker
         {response.confidence !== undefined ? ` · confidence ${Math.round(response.confidence * 100)}%` : ""}
+        {meta.usage && meta.usage.estimatedCostUsd > 0 ? ` · ≈ $${meta.usage.estimatedCostUsd.toFixed(4)} (estimate)` : ""}
         {capture ? ` · looked at ${SOURCE_LABEL[capture.source]}` : ""}
         {capture?.pixelWidth ? ` (${capture.pixelWidth}×${capture.pixelHeight}px)` : ""}
       </Text>
