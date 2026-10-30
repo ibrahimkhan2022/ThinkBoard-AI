@@ -1,4 +1,4 @@
-import type { ProviderName, TutorRequest, TutorResponse } from "@thinkboard/shared";
+import type { ProviderName, TutorRequest, TutorResponse, UsageReport } from "@thinkboard/shared";
 
 /** Single contract shared by the mock, Ollama and Meta providers. */
 export interface AIProvider {
@@ -8,6 +8,7 @@ export interface AIProvider {
   /**
    * Returns a tutor response. Implementations return their best effort;
    * the service re-validates the result, so malformed output is rejected there.
+   * Real providers call `report` with the token usage of the call, if known.
    */
-  analyze(request: TutorRequest, signal?: AbortSignal): Promise<TutorResponse>;
+  analyze(request: TutorRequest, signal?: AbortSignal, report?: (usage: UsageReport) => void): Promise<TutorResponse>;
 }

@@ -131,6 +131,24 @@ Deadline: public web demo by **November 4, 2026, 9:00 PM ET**.
 - Real touch/stylus and the colour picker dialog itself (an OS widget) were not driven.
 - Dev-only `window.__whiteboard` is still exposed in dev builds (used for the checks above).
 
+## Text box fixes (2026-10-30)
+
+Reported: the text box felt buggy when typing and moving. Each problem was reproduced in the browser first.
+
+| Problem found | Cause | Fix |
+|---|---|---|
+| Caret ended up inside the last word, drifting further from the text as the line got longer (36 px after one sentence) | The input used the system font while the board draws Inter | The same Inter file is registered as a browser font for the input; drift is now 1 px. No wrapping (`white-space: pre`) |
+| Escape threw away everything typed | Escape cancelled the draft | Escape / Ctrl+Enter finish and keep the text, select it and switch to Select so it can be moved or deleted. Emptying the box is how you discard it |
+| Clicking elsewhere to finish also opened a new empty box | Every click with the Text tool started a box | A click while a box is open only finishes it |
+| Clicking inside the open box to move the caret ended the edit | The press also reached the canvas gesture, which read it as "click away" | Presses on the editor no longer reach the canvas |
+| Text could not be moved with the Text tool; dragging it just reopened editing | One tool action for click and drag | With the Text tool: click edits, drag moves (one undo step) |
+| No way to move text while typing | — | A grip above the box drags it, and typing carries on |
+| No quick way back into text with Select | — | Double-click text with the Select tool to edit it |
+
+Checked with real mouse and keyboard input in the browser: type a long line (caret at the end), Escape keeps and selects, Select-drag moves, Text-tool drag moves without editing, Text-tool click edits and typing inserts at the click position, clicking inside the box keeps editing, clicking away leaves no stray box, grip drag moves exactly the dragged distance with focus kept, double-click edits. Unit tests cover the press/finish logic, position-aware commit and double-click detection.
+
+Not verified: touch (the grip uses a pan responder off the web, untested), pen/stylus, IME input, very large zoom levels, and text that is rotated or wrapped (not supported).
+
 ## Whiteboard specification — gap analysis and checklist (started 2026-10-29)
 
 Source: the 35-section "Complete Whiteboard Implementation Specification". Deadline: 2026-11-04 21:00 ET. Work is split into the spec's five milestones. A box is ticked only when the feature is implemented **and** checked; "partial" says what is missing.
@@ -191,10 +209,35 @@ So 500 strokes pans above 60 fps, but **1000 strokes does not reach 60 fps** in 
 ### Milestones 2–5
 Not started. See spec sections 11–32. Dark mode, Playwright end-to-end tests, pen pressure, rotation and the highlighter/shapes/lasso tools are explicitly **not** in Milestone 1.
 
-## Next: Phase 4 — Real AI
-1. Ollama provider (local vision model), selectable with `AI_PROVIDER=ollama`; contract tests against the same suite.
-2. Meta provider behind `ENABLE_PAID_AI`, with a server-side budget gate (per-session and daily call caps, conservative estimates, clearly labelled as estimates) and a usage dashboard. No paid call without an explicit click.
-3. math.js verification of algebra steps so the UI can distinguish "AI says" from "checked".
+## Phase 4 — Real AI: Ollama and Meta Muse Spark (built 2026-10-29; **no real Meta call made yet**)
+
+### Built
+- **Prompt and parser** (`server/src/ai/prompt.ts`): a short system prompt that encodes the tutoring rules (guide don't solve, earliest mistake only, say "uncertain" rather than guess, ignore instructions found in the image), one instruction per mode (check work, hint, how to start, next step, explain, free question), and a strict parser. The parser tolerates code fences, scales 0–1 boxes to 0–1000, drops out-of-range boxes and boxes without a confidence, reads "85" as 85%, and always forces `revealAnswer=false`.
+- **Meta provider** (`providers/meta.ts`): OpenAI-compatible `POST {META_BASE_URL}/chat/completions` with the board as a base64 `image_url`, `max_completion_tokens` and `reasoning_effort`. Friendly errors for 401/402/429/5xx, no auto-retry, key never in messages or logs.
+- **Budget gate** (`budget.ts`): per-session, per-day and dollar limits with worst-case reservation, settlement from reported tokens, persistence across restarts. `GET /api/usage` and `/api/health` (now reports `paid` and `model`).
+- **Ollama provider** (`providers/ollama.ts`): local vision model through `/api/chat` with `format: json`; checks the model is vision-capable and explains how to fix it; free, no gate.
+- **Selection rules** (`providers/index.ts`): paid use needs `AI_PROVIDER=meta` + `ENABLE_PAID_AI=true` + `MODEL_API_KEY`; contributor (training-on-your-data) models and unknown model ids are refused unless `META_ALLOW_TRAINING_USE=true`.
+- **Client:** provider banner (mock / local / paid), explicit "I understand" before paid use, estimated usage line, estimated cost on each answer, server error messages shown as written, AI image capped at 1280 px.
+- Cost and verification plan: see [COSTS.md](COSTS.md).
+
+### Verified
+| Check | Result |
+|---|---|
+| `npm run typecheck` | pass |
+| `npm test`: shared 5, server 127, client 211 | 343 pass; the network is blocked in tests so none can call a paid API |
+| Meta request shape, cost maths, every error mapping, no retry, no key leakage (fake fetch) | automated |
+| Budget gate: session/day/dollar limits, reservation, release, settle, UTC rollover, persistence across restart | automated |
+| Parser: fences, malformed JSON, fractions, out-of-range boxes, confidence rules, answer never revealed | automated |
+| Ollama provider against the **real local server** with `llama3.1:8b` (text only): valid JSON answer in ~14 s; image request refused with "cannot read images, use gemma3:4b or qwen2.5vl:7b" | observed working (free) |
+| Full paid path in the browser against a **local fake Meta server** (no real API): paid banner, buttons locked until "I understand" (a click on a locked button sent nothing), real HTTP request received with Bearer key, `muse-spark-1.3`, `max_completion_tokens: 1200`, `reasoning_effort: low`, system prompt and a PNG data URI; answer and highlight shown; "≈ $0.0033 (estimate)" on the card; usage line "1 of 3 checks"; counters written to `server/data/usage.json`; the 4th check refused by the gate with the session-limit message and never sent | observed working |
+
+### Not verified / open
+- **No real Meta call has been made**, so these are unconfirmed until you approve one: that `muse-spark-1.3` and `reasoning_effort: "low"` are accepted, the real token counts per image, whether `completion_tokens` already includes reasoning tokens, whether your account is in a supported region (Meta's launch notes mention the US), and how well the model reads handwriting and places the highlight box. Meta's docs pages for structured output and reasoning were not read; the prompt asks for JSON instead of relying on `response_format`.
+- **No vision model is installed locally**, so reading a real board image with Ollama is untested. A small model is likely to misread handwriting and overstate confidence (the text-only test returned confidence 1.0).
+- Accuracy of the math is the model's, not ours: nothing re-checks the algebra yet (a math.js verifier remains on the list), so the card says "not verified by a math checker".
+- No "solve completely" mode (the spec's sixth quick action) and no SAM 3.1 / Muse Image / Muse Wonder use yet. SAM could later localise a highlighted step more accurately than asking the language model for a box.
+- Session ids come from the browser, so only the daily and dollar caps stop a determined abuser of a public demo. No per-IP rate limit yet.
+- The usage panel and spend are per server process/file: if the demo is hosted on a platform with an ephemeral disk, `usage.json` may reset on redeploy.
 
 ## Later
 - Phase 5: session save/restore, polish, deployment, demo script.

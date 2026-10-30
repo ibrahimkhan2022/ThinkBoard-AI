@@ -1,13 +1,16 @@
 import { useRef } from "react";
 import { usePanGesture, usePinchGesture, useSimultaneousGestures } from "react-native-gesture-handler";
+import { createDoubleTapDetector } from "./logic/doubleTap";
 import { handleAt, HANDLE_RADIUS_PX, hitTest, resizeFromCorner, translateObject } from "./logic/hitTest";
 import { normalizeRect, objectsInMarquee } from "./logic/selection";
 import { screenToWorld } from "./logic/viewport";
 import { pointerModifiers } from "./pointerState";
-import type { Corner, ImageObject, Point, CanvasObject } from "./types";
+import type { Corner, ImageObject, Point, CanvasObject, TextObject } from "./types";
 import { effectiveTool, useWhiteboardStore } from "./whiteboardStore";
 
 const SELECT_TOLERANCE_PX = 6;
+/** Pointer travel (screen pixels) after which a press on text becomes a drag instead of a click. */
+const DRAG_THRESHOLD_PX = 4;
 
 type Interaction =
   | { kind: "none" }
@@ -16,9 +19,12 @@ type Interaction =
   | { kind: "pan" }
   | { kind: "move"; bases: CanvasObject[]; start: Point }
   | { kind: "resize"; base: ImageObject; corner: Corner }
+  /** Pressed on existing text with the Text tool: a click edits it, a drag moves it. */
+  | { kind: "text-press"; base: TextObject; start: Point; startScreen: Point; moved: boolean }
   | { kind: "marquee"; start: Point; base: string[] };
 
 const store = () => useWhiteboardStore.getState();
+const doubleTap = createDoubleTapDetector();
 const toWorld = (screen: Point) => screenToWorld(store().viewport, screen);
 
 /**
@@ -45,8 +51,11 @@ export function useBoardGestures() {
         store().beginStroke(world);
         interaction.current = { kind: "draw" };
       } else if (tool === "text") {
-        store().beginTextEditAt(world);
-        interaction.current = { kind: "none" };
+        const press = store().pressTextTool(world);
+        interaction.current =
+          press.kind === "on-text"
+            ? { kind: "text-press", base: press.object, start: world, startScreen: screen, moved: false }
+            : { kind: "none" };
       } else if (tool === "eraser") {
         store().beginTransaction();
         store().eraseAt(world, store().eraserSize / viewport.scale);
@@ -84,6 +93,16 @@ export function useBoardGestures() {
         case "marquee":
           updateMarquee(current, world);
           break;
+        case "text-press": {
+          const travelled = Math.hypot(e.x - current.startScreen.x, e.y - current.startScreen.y);
+          if (!current.moved && travelled < DRAG_THRESHOLD_PX) break;
+          if (!current.moved) {
+            current.moved = true;
+            store().beginTransaction();
+          }
+          store().replaceObject(translateObject(current.base, world.x - current.start.x, world.y - current.start.y));
+          break;
+        }
       }
     },
     onFinalize: () => {
@@ -92,6 +111,11 @@ export function useBoardGestures() {
       if (current.kind === "draw") store().endStroke();
       else if (current.kind === "pan") store().setPanning(false);
       else if (current.kind === "marquee") store().setMarquee(null);
+      else if (current.kind === "text-press") {
+        // Dragged: it has moved (one undo step). Just clicked: open it for editing.
+        if (current.moved) store().endTransaction();
+        else store().beginTextEditAt(current.start);
+      }
       else if (current.kind === "erase" || current.kind === "move" || current.kind === "resize") {
         store().endTransaction();
       }
@@ -99,6 +123,7 @@ export function useBoardGestures() {
   });
 
   const beginSelect = (world: Point) => {
+    store().commitTextEdit(); // clicking away from a text box being edited finishes it
     const { objects, selectedIds, viewport } = store();
     const shift = pointerModifiers.shift;
 
@@ -112,6 +137,12 @@ export function useBoardGestures() {
     }
 
     const hit = hitTest(objects, world, SELECT_TOLERANCE_PX / viewport.scale);
+    // Double-clicking text with the Select tool edits it.
+    if (hit?.kind === "text" && !shift && doubleTap.press(hit.id, Date.now())) {
+      store().beginTextEditAt(world);
+      interaction.current = { kind: "none" };
+      return;
+    }
     if (hit) {
       if (shift) {
         store().toggleSelected(hit.id); // shift-click only edits the selection

@@ -40,7 +40,7 @@ describe("HTTP API", () => {
   it("reports health with the active provider", async () => {
     const app = await buildServer(config);
     const res = await app.inject({ method: "GET", url: "/api/health" });
-    expect(res.json()).toEqual({ ok: true, provider: "mock", isMock: true });
+    expect(res.json()).toEqual({ ok: true, provider: "mock", isMock: true, paid: false });
   });
 
   it("returns a validated, mock-flagged tutor result", async () => {
@@ -96,7 +96,7 @@ describe("HTTP API", () => {
       isMock: true,
       analyze: async () => ({ status: "error_found", message: "", revealAnswer: false }),
     };
-    const app = await buildServer(config, createTutorService(broken));
+    const app = await buildServer(config, { service: createTutorService(broken) });
     const res = await app.inject({ method: "POST", url: "/api/tutor", payload: validBody });
     expect(res.statusCode).toBe(502);
   });
@@ -112,7 +112,7 @@ describe("HTTP API", () => {
         revealAnswer: false,
       }),
     };
-    const app = await buildServer(config, createTutorService(broken));
+    const app = await buildServer(config, { service: createTutorService(broken) });
     const res = await app.inject({ method: "POST", url: "/api/tutor", payload: validBody });
     expect(res.statusCode).toBe(502);
   });

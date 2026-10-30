@@ -1,5 +1,5 @@
 import type { Rect } from "@thinkboard/shared";
-import type { CanvasObject, Corner, ImageObject, Point, StrokeObject } from "../types";
+import type { CanvasObject, Corner, ImageObject, Point, StrokeObject, TextObject } from "../types";
 
 export const MIN_IMAGE_SIZE = 24;
 /** On-screen radius of the image resize handles, in pixels. */
@@ -64,6 +64,15 @@ export function hitTest(objects: CanvasObject[], p: Point, tolerance: number): C
   for (let i = objects.length - 1; i >= 0; i--) {
     const object = objects[i];
     if (object.kind === "image" && rectContains(object, p)) return object;
+  }
+  return null;
+}
+
+/** The topmost text object under `p` (with a small margin), if any. */
+export function topTextAt(objects: CanvasObject[], p: Point, margin = 0): TextObject | null {
+  for (let i = objects.length - 1; i >= 0; i--) {
+    const object = objects[i];
+    if (object.kind === "text" && rectContains(object, p, margin)) return object;
   }
   return null;
 }

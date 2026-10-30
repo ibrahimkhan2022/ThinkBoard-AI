@@ -77,7 +77,7 @@ export function runShortcut(action: ShortcutAction, ctx: ShortcutContext): boole
 
 /**
  * Escape peels back one layer at a time: an open popover or menu first, then
- * a text edit or an in-progress marquee, then the selection. It never closes
+ * finishing a text edit or an in-progress marquee, then the selection. It never closes
  * the AI panel.
  */
 function escape(): boolean {
@@ -88,7 +88,8 @@ function escape(): boolean {
   }
   const board = useWhiteboardStore.getState();
   if (board.textDraft) {
-    board.cancelTextEdit();
+    // Escape finishes the text and keeps it (empty text simply disappears); it never throws typing away.
+    board.commitTextEdit(undefined, { select: true });
     return true;
   }
   if (board.marquee) {
