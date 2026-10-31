@@ -1,6 +1,9 @@
 import { createId } from "../../lib/ids";
 import { BACKGROUNDS, type Background, type CanvasObject, type Point, type Viewport } from "../whiteboard/types";
 import { INITIAL_VIEWPORT, MAX_SCALE, MIN_SCALE } from "../whiteboard/logic/viewport";
+import { isFontFamily } from "../whiteboard/logic/fontFamilies";
+import { normalizeSpans, type TextSpan } from "../whiteboard/logic/textRuns";
+import { sanitizeChat } from "../tutor/chat";
 import type { BoardDoc, BoardMeta } from "./types";
 
 export const DEFAULT_TITLE = "Untitled board";
@@ -17,6 +20,7 @@ export function createBoard(now: number, title = DEFAULT_TITLE): BoardDoc {
     objectCount: 0,
     objects: [],
     viewport: INITIAL_VIEWPORT,
+    chat: [],
   };
 }
 
@@ -64,6 +68,24 @@ function sanitizePoints(value: unknown): Point[] | null {
   return points;
 }
 
+/** Formatting ranges from storage: only known attributes survive, clipped to the text. */
+function sanitizeSpans(value: unknown, length: number): TextSpan[] {
+  if (!Array.isArray(value)) return [];
+  const spans: TextSpan[] = [];
+  for (const s of value) {
+    if (!isRecord(s) || !isFiniteNumber(s.start) || !isFiniteNumber(s.end)) continue;
+    spans.push({
+      start: Math.floor(s.start),
+      end: Math.floor(s.end),
+      ...(s.b === true ? { b: true as const } : {}),
+      ...(s.i === true ? { i: true as const } : {}),
+      ...(s.u === true ? { u: true as const } : {}),
+      ...(s.script === "sup" || s.script === "sub" ? { script: s.script } : {}),
+    });
+  }
+  return normalizeSpans(spans, length);
+}
+
 /** Keeps only well-formed objects: stored data may predate a format change or be damaged. */
 export function sanitizeObjects(value: unknown): CanvasObject[] {
   if (!Array.isArray(value)) return [];
@@ -100,6 +122,7 @@ export function sanitizeObjects(value: unknown): CanvasObject[] {
         o.width > 0 &&
         o.height > 0
       ) {
+        const spans = sanitizeSpans(o.spans, o.text.length);
         objects.push({
           id: o.id,
           kind: "text",
@@ -110,6 +133,10 @@ export function sanitizeObjects(value: unknown): CanvasObject[] {
           y: o.y,
           width: o.width,
           height: o.height,
+          ...(spans.length > 0 ? { spans } : {}),
+          ...(isFontFamily(o.fontFamily) && o.fontFamily !== "inter" ? { fontFamily: o.fontFamily } : {}),
+          ...(o.align === "center" || o.align === "right" ? { align: o.align } : {}),
+          ...(o.fixedWidth === true ? { fixedWidth: true } : {}),
         });
       }
     }
@@ -158,5 +185,6 @@ export function sanitizeDoc(raw: unknown): BoardDoc | null {
     ...(isString(raw.thumbnail) ? { thumbnail: raw.thumbnail } : {}),
     objects,
     viewport: sanitizeViewport(raw.viewport),
+    chat: sanitizeChat(raw.chat),
   };
 }

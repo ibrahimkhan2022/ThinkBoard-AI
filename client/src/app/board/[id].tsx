@@ -4,6 +4,7 @@ import { BoardHeader } from "../../features/boards/BoardHeader";
 import { boardStorage } from "../../features/boards/storage";
 import { useBoardPersistence } from "../../features/boards/useBoardPersistence";
 import { WorkspaceLayout } from "../../features/layout/WorkspaceLayout";
+import { useClipboard } from "../../features/shortcuts/useClipboard";
 import { useShortcuts } from "../../features/shortcuts/useShortcuts";
 import { BoardActions } from "../../features/whiteboard/BoardActions";
 import { useImportImage } from "../../features/whiteboard/import/useImportImage";
@@ -17,6 +18,7 @@ export default function BoardScreen() {
   const { status, retry } = useBoardPersistence(id);
   const importImage = useImportImage();
   useShortcuts(importImage); // the one global keyboard handler
+  useClipboard(); // copy, cut and paste of canvas objects
 
   if (status === "loading") {
     return (

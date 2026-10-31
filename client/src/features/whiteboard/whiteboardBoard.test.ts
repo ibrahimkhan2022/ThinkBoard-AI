@@ -34,7 +34,9 @@ describe("text", () => {
   it("creates a text object from the draft on commit, as one undo step", () => {
     typeText({ x: 50, y: 60 }, "x = 4");
     const [text] = get().objects as TextObject[];
-    expect(text).toMatchObject({ kind: "text", text: "x = 4", x: 50, y: 60, width: 80, height: 36 });
+    expect(text).toMatchObject({ kind: "text", text: "x = 4", x: 50, y: 60 });
+    expect(text.width).toBeGreaterThan(20); // sized by the text layout, not by the caller
+    expect(text.height).toBeCloseTo(28 * 1.3);
     expect(get().textDraft).toBeNull();
     get().undo();
     expect(get().objects).toHaveLength(0);

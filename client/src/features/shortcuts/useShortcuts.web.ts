@@ -19,6 +19,8 @@ export function useShortcuts(importImage: () => void) {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (blocked(e)) return;
+      // While a text box is open only Escape is a board shortcut: letters are text, and a lost focus must never switch tools.
+      if (board().textDraft && e.key !== "Escape") return;
 
       if (e.code === "Space" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault(); // no page scroll, no re-activating a focused button

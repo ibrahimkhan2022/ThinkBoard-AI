@@ -122,3 +122,22 @@ export function resizeFromCorner(image: ImageObject, corner: Corner, pointer: Po
     height,
   };
 }
+
+/** The two grips on the sides of a selected text box; dragging one sets the width and the text wraps. */
+export type TextEdge = "w" | "e";
+/** Distance (screen px) the side grips sit outside the box, so they never overlap the text. */
+export const TEXT_HANDLE_GAP_PX = 10;
+
+export function textHandlePoint(text: TextObject, edge: TextEdge, scale: number): Point {
+  const gap = TEXT_HANDLE_GAP_PX / scale;
+  return { x: edge === "e" ? text.x + text.width + gap : text.x - gap, y: text.y + text.height / 2 };
+}
+
+/** Which side grip of a selected text box (if any) is under `p`. `radius` is in canvas units. */
+export function textHandleAt(text: TextObject, p: Point, scale: number, radius: number): TextEdge | null {
+  for (const edge of ["e", "w"] as const) {
+    const c = textHandlePoint(text, edge, scale);
+    if (Math.hypot(p.x - c.x, p.y - c.y) <= radius) return edge;
+  }
+  return null;
+}

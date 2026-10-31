@@ -34,6 +34,16 @@ describe("OllamaProvider", () => {
     expect(reports).toEqual([{ inputTokens: 900, outputTokens: 120, estimatedCostUsd: 0 }]); // free
   });
 
+  it("turns thinking mode off when asked (the default) and leaves it to the model when undefined", async () => {
+    const off = fakeFetch(show(["vision"]), chat());
+    await new OllamaProvider({ baseUrl: "http://localhost:11434", model: "gemma4:12b", timeoutMs: 5000, maxOutputTokens: 800, think: false, fetchImpl: off }).analyze(baseRequest());
+    expect(bodyOf(off.mock.calls.find((c) => String(c[0]).endsWith("/api/chat"))!).think).toBe(false);
+
+    const auto = fakeFetch(show(["vision"]), chat());
+    await new OllamaProvider({ baseUrl: "http://localhost:11434", model: "gemma4:12b", timeoutMs: 5000, maxOutputTokens: 800, fetchImpl: auto }).analyze(baseRequest());
+    expect("think" in bodyOf(auto.mock.calls.find((c) => String(c[0]).endsWith("/api/chat"))!)).toBe(false);
+  });
+
   it("checks that the model can see images, once", async () => {
     const f = fakeFetch(show(["completion", "vision"]), chat());
     const provider = make(f);

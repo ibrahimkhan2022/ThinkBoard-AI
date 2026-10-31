@@ -13,6 +13,12 @@ const EnvSchema = z.object({
   /** Must be a vision-capable model, e.g. gemma3:4b or qwen2.5vl:7b. */
   OLLAMA_MODEL: z.string().default(""),
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  /**
+   * Reasoning ("thinking") mode of models that have one (e.g. gemma4). "off" is the default:
+   * on a gemma4:12b check it took 8 s instead of ~120 s for the same answer. "on" can help with
+   * harder problems; "auto" leaves it to the model's own default.
+   */
+  OLLAMA_THINK: z.enum(["off", "on", "auto"]).default("off"),
 
   META_MODEL: z.string().default("muse-spark-1.3"),
   META_BASE_URL: z.string().url().default("https://api.meta.ai/v1"),

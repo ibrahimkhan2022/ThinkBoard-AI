@@ -1,6 +1,6 @@
 import { canvasRectToNormalizedBox, type Rect, type TutorResponse } from "@thinkboard/shared";
 import { describe, expect, it } from "vitest";
-import { AI_REGION_MIN_SIZE, AI_REGION_PADDING, chooseAIRegion } from "../whiteboard/logic/aiRegion";
+import { AI_REGION_MIN_SIZE, AI_REGION_PADDING, chooseAIRegion, LINE_MARKER_MARGIN } from "../whiteboard/logic/aiRegion";
 import { screenToWorld, worldToScreen } from "../whiteboard/logic/viewport";
 import type { CanvasObject, StrokeObject } from "../whiteboard/types";
 import { MIN_HIGHLIGHT_CONFIDENCE, resolveAnnotation } from "./resolveAnnotation";
@@ -108,7 +108,7 @@ describe("annotation stays on the work after pan and zoom", () => {
     const size = { width: 1000, height: 600 };
     // A line of work at world (1100..1500, 600..700), well away from the origin.
     const objects: CanvasObject[] = [stroke("a", 1100, 600, 400, 100)];
-    const picked = chooseAIRegion(objects, [], viewport, size);
+    const picked = chooseAIRegion(objects, [], viewport, size, "screen");
     expect(picked).not.toBeNull();
     const region = picked!.region;
 
@@ -142,7 +142,7 @@ describe("chooseAIRegion", () => {
 
   it("crops the view to the content with padding", () => {
     const objects = [stroke("a", 100, 100, 300, 100)];
-    const picked = chooseAIRegion(objects, [], identity, size)!;
+    const picked = chooseAIRegion(objects, [], identity, size, "screen")!;
     expect(picked.source).toBe("view");
     expect(picked.region.x).toBeLessThanOrEqual(100 - AI_REGION_PADDING + 4);
     expect(picked.region.width).toBeLessThan(size.width);
@@ -151,20 +151,22 @@ describe("chooseAIRegion", () => {
 
   it("never exceeds the visible area when content is partly off screen", () => {
     const objects = [stroke("a", 800, 400, 1000, 1000)];
-    const { region } = chooseAIRegion(objects, [], identity, size)!;
+    const { region } = chooseAIRegion(objects, [], identity, size, "screen")!;
     expect(region.x + region.width).toBeLessThanOrEqual(size.width + 1e-6);
     expect(region.y + region.height).toBeLessThanOrEqual(size.height + 1e-6);
   });
 
   it("follows the viewport: the same content gives a different region once panned", () => {
     const objects = [stroke("a", 100, 100, 300, 100)];
-    const panned = chooseAIRegion(objects, [], { x: -50, y: -20, scale: 1 }, size)!;
-    const home = chooseAIRegion(objects, [], identity, size)!;
+    const panned = chooseAIRegion(objects, [], { x: -50, y: -20, scale: 1 }, size, "screen")!;
+    const home = chooseAIRegion(objects, [], identity, size, "screen")!;
     expect(panned.region).toBeDefined();
     expect(panned.region.x).toBeCloseTo(home.region.x);
     // Zoomed so the content sits partly outside the view: the region is clipped to the visible part.
-    const zoomed = chooseAIRegion(objects, [], { x: -300, y: 0, scale: 2 }, size)!;
-    expect(zoomed.region.x).toBeGreaterThanOrEqual(150 - 1e-6);
+    const zoomed = chooseAIRegion(objects, [], { x: -300, y: 0, scale: 2 }, size, "screen")!;
+    // Clipped to the visible part (x = 150), plus room on the left for the line markers.
+    expect(zoomed.region.x).toBeGreaterThanOrEqual(150 - LINE_MARKER_MARGIN - 1e-6);
+    expect(zoomed.region.x).toBeLessThan(150);
   });
 
   it("prefers the selection over the view", () => {
@@ -183,7 +185,7 @@ describe("chooseAIRegion", () => {
 
   it("ignores a stale selection id", () => {
     const objects = [stroke("a", 100, 100, 300, 100)];
-    expect(chooseAIRegion(objects, ["gone"], identity, size)?.source).toBe("view");
+    expect(chooseAIRegion(objects, ["gone"], identity, size)?.source).toBe("recent");
   });
 
   it("grows a tiny selection to the minimum size, centred on it", () => {

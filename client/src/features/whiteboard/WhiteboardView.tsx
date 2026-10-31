@@ -5,6 +5,7 @@ import { WIDE_BREAKPOINT } from "../layout/uiStore";
 import { ToolRail } from "./ToolRail";
 import { useOutsideClose } from "./useOutsideClose";
 import WhiteboardLoader from "./WhiteboardLoader";
+import { TextToolbar } from "./TextToolbar";
 import { ZoomControls } from "./ZoomControls";
 
 /** The board plus its floating controls. The Skia canvas itself loads lazily on web. */
@@ -17,6 +18,7 @@ export function WhiteboardView() {
       <WhiteboardLoader />
       <ZoomControls compact={compact} />
       <AnnotationChip />
+      <TextToolbar />
       <ToolRail dock={compact} />
       <ToastHost />
     </View>

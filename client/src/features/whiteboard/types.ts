@@ -1,4 +1,9 @@
 import type { Rect } from "@thinkboard/shared";
+import type { FontFamilyId } from "./logic/fontFamilies";
+import type { TextAlign } from "./logic/textFlow";
+import type { TextSpan } from "./logic/textRuns";
+
+export type { TextAlign, TextSpan };
 
 /** A point in canvas (world) coordinates unless a name says otherwise. */
 export interface Point {
@@ -37,6 +42,17 @@ export interface TextObject extends Rect {
   text: string;
   color: string;
   fontSize: number;
+  /** Bold, italic, underline, superscript and subscript ranges over `text`. Absent: plain. */
+  spans?: TextSpan[];
+  /** Font family id (see logic/fontFamilies). Absent: Inter. */
+  fontFamily?: FontFamilyId;
+  /** Line alignment inside the box. Absent: left. */
+  align?: TextAlign;
+  /**
+   * True once the width was set by hand (or by resizing): the text then wraps at `width` and
+   * only the height follows the content. False/absent: the box grows with its longest line.
+   */
+  fixedWidth?: boolean;
 }
 
 export type CanvasObject = StrokeObject | ImageObject | TextObject;

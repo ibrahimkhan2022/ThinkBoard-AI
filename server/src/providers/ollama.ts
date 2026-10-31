@@ -9,6 +9,8 @@ export interface OllamaOptions {
   timeoutMs: number;
   /** Cap on generated tokens, to keep slow local models from rambling. */
   maxOutputTokens: number;
+  /** Thinking mode for models that support it: false/true, or undefined to leave it to the model. */
+  think?: boolean;
   fetchImpl?: typeof fetch;
 }
 
@@ -70,6 +72,7 @@ export class OllamaProvider implements AIProvider {
           model: this.options.model,
           stream: false,
           format: "json",
+          ...(this.options.think === undefined ? {} : { think: this.options.think }),
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: buildUserText(request), ...(request.imageBase64 ? { images: [request.imageBase64] } : {}) },

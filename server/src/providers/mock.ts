@@ -73,12 +73,14 @@ export const MOCK_RESPONSES: Record<TutorMode, TutorResponse> = {
     status: "incomplete",
     message: "A good way to begin is to get rid of the brackets, so that the unknown x is no longer inside them.",
     nextStep: "Expand the brackets on the left-hand side.",
+    stepPreview: ["2(x + 3) = 2·x + 2·3"],
     revealAnswer: false,
   },
   next_step: {
     status: "incomplete",
     message: "Once the brackets are expanded, think about how to get the x term on its own.",
     nextStep: "Subtract the constant from both sides of the equation.",
+    stepPreview: ["2x + 6 − 6 = 14 − 6", "2x = 8"],
     revealAnswer: false,
   },
   explain_step: {

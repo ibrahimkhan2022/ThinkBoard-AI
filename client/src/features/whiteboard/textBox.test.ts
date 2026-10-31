@@ -72,21 +72,48 @@ describe("finishing text", () => {
     expect(get().tool).toBe("select");
   });
 
-  it("a plain finish (clicking away) leaves the tool alone and selects nothing", () => {
+  it("a plain finish (clicking away) returns to Select and selects nothing", () => {
     get().setTool("text");
     get().beginTextEditAt({ x: 5, y: 5 });
     get().updateTextDraft({ text: "hello", width: 70, height: 36 });
     get().commitTextEdit();
-    expect(get().tool).toBe("text");
+    expect(get().tool).toBe("select");
     expect(get().selectedIds).toEqual([]);
   });
 
-  it("finishing an emptied box does not select anything or switch tools", () => {
+  it("finishing an emptied box also returns to Select, without selecting anything", () => {
     get().setTool("text");
     get().beginTextEditAt({ x: 5, y: 5 });
     get().commitTextEdit(undefined, { select: true });
-    expect(get().tool).toBe("text");
+    expect(get().tool).toBe("select");
     expect(get().selectedIds).toEqual([]);
+  });
+
+  it("clicking away from a box with the Text tool ends in Select mode (no new box)", () => {
+    get().setTool("text");
+    get().pressTextTool({ x: 10, y: 10 });
+    get().updateTextDraft({ text: "hi" });
+    expect(get().pressTextTool({ x: 800, y: 800 })).toEqual({ kind: "finished" });
+    expect(get().tool).toBe("select");
+    expect(get().textDraft).toBeNull();
+  });
+
+  it("choosing another tool while editing keeps that tool (the finish does not override it)", () => {
+    get().setTool("text");
+    get().beginTextEditAt({ x: 5, y: 5 });
+    get().updateTextDraft({ text: "hi" });
+    get().setTool("pen");
+    expect(get().tool).toBe("pen");
+    expect(get().objects).toHaveLength(1);
+  });
+
+  it("opening another box does not change the tool that was active", () => {
+    get().setTool("text");
+    get().beginTextEditAt({ x: 5, y: 5 });
+    get().updateTextDraft({ text: "one" });
+    get().beginTextEditAt({ x: 500, y: 500 });
+    expect(get().tool).toBe("text");
+    expect(get().objects).toHaveLength(1);
   });
 });
 

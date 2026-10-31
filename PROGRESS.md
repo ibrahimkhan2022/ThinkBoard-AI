@@ -239,5 +239,87 @@ Not started. See spec sections 11–32. Dark mode, Playwright end-to-end tests, 
 - Session ids come from the browser, so only the daily and dollar caps stop a determined abuser of a public demo. No per-IP rate limit yet.
 - The usage panel and spend are per server process/file: if the demo is hosted on a platform with an ephemeral disk, `usage.json` may reset on redeploy.
 
+## Local AI test: Ollama with gemma4:12b (2026-10-30; free)
+
+Ollama was updated to 0.40.13 (0.6.5 could not pull Gemma 3: HTTP 412). The model installed is `gemma4:12b` (11.9B, Q4, 8.0 GB; capabilities: vision, thinking, tools, audio) on an RTX 4060 Ti with 8 GB. No paid API was used.
+
+### Results (typed worked example 2(x + 3) = 14, through the real app)
+| Case | Result | Time |
+|---|---|---|
+| Mistake in step 2 (`2x + 3 = 14`), "Check my work" | Mistake found, guiding question "what happens to the 3?", orange box exactly on the wrong line, answer not given | 7 s |
+| Hint / how to start / next step | Sensible, tutor-style, no final answer | 5–7 s each |
+| Correct work | "Looks correct", no highlight | 4 s |
+| Later arithmetic slip (`2x = 9`) | "What is 14 minus 6?", box on the wrong line | 7 s |
+
+### The important finding: thinking mode
+With the model's default "thinking" on, the first check took **~120 s** (near the client's 130 s timeout). With `think: false` the same check takes **~8 s** (1.3 s to read the image, 6.6 s to write ~100 tokens) with the same correct answer. `OLLAMA_THINK` is now a setting (`off` default, `on`, `auto`).
+
+### Not verified
+- **Real handwriting.** The test board used typed text (clean Inter). Messy handwriting, small writing and diagrams are untested and are where small local models fail most.
+- Hard multi-step problems (thinking `off` may be worse there); nothing re-checks the maths.
+- Confidence is not trustworthy: the model says 100% for everything.
+- Only one problem type (linear equations); only one run per case, so no measure of consistency.
+
+## Tutor chat redesign: handwriting, saved history, focus, study-only (built 2026-10-30; free; no paid call made)
+
+### Built
+- **Formatting.** The prompt bans LaTeX/`$`; the server and the client both convert any `$..$`, `\(..\)`, `\frac`, `^`, `_` to plain Unicode maths (`shared/src/mathText.ts`), and equations are shown as chips. Currency such as "$5" is left alone.
+- **Handwriting.** The board work is grouped into numbered lines from the stroke geometry; blue numbered badges are drawn into the image the model sees, and the model answers with `errorStep` = line number. The highlight is drawn around the student's own line (the model's estimated box is only a fallback). Low confidence still means text only.
+- **Where the student is.** By default the tutor sees only the cluster of work around the most recent mark that is on screen (a toggle switches to the whole screen; a selection always wins). A dashed outline with the same line numbers is drawn on the board while the panel is open (never saved or exported).
+- **Asks back.** If it cannot tell which problem is meant, the model sets `needsInput` and the reply is a question.
+- **Saved chat.** Messages are saved with each board (IndexedDB), restored on open, capped at 200, with "New conversation". The last 6 turns go to the model so follow-ups work.
+- **Next step boxes.** "Next step" / "How to start" show the step as equation boxes (`5x − 10 + 10 = 0 + 10` → `5x = 10`).
+- **Study only.** A server-side guard refuses off-topic or instruction-override questions before any model call (no cost). Check-my-work never returns the corrected line or a preview (enforced in `tutorService`, because the local model ignored the prompt once).
+- New panel UI: header with provider pill, focus bar, welcome screen, message bubbles, answer cards with Retry/Show on board, composer with action chips.
+
+### Verified
+- `npm run typecheck` clean; tests: shared 17, server 172, client 270 (all passing, no network).
+- In the browser against local `gemma4:12b` (free), on strokes drawn with a simple stroke font: the focus outline and numbered badges appear; a wrong third line (`5 − 1 = 2`) was reported as "Line 3" with a guiding hint and a highlight on that line; "write me a poem about cats" was refused without a model call; the whole conversation came back after a page reload; no horizontal overflow at 375 px width.
+
+### Not verified / known gaps
+- **Real handwriting is still untested**; my test strokes are clean polylines. On the same board the model wrongly called `5x − 10 = 0 → 5x = 0 + 10 → x = 4` "correct" (x should be 2), so a small local model still misses errors, and its confidence is always 100%.
+- A stacked fraction may be split into two numbered lines.
+- The screen-reader behaviour of the panel was not checked; the focus outline was only checked by DOM/screenshot at low resolution.
+- Not run on a phone or in the Expo native apps; stale dev server on 8081 needs a restart to pick this up.
+
+## Text and writing tools: editor rewrite, math keyboard, formatting, clipboard (built 2026-10-30; free; no paid call made)
+
+### Root causes found (not event-handler patches)
+1. **Typing a space or pressing Enter ended the edit.** `react-native-gesture-handler` listens for `Enter`/`Space` keydown on the canvas element (keyboard activation) and turns them into a press at the canvas centre; the text input sits inside that element, so the press "clicked away" and committed the box. React's `stopPropagation` is too late (the listener runs first). The editor now handles keys with native listeners on the input itself.
+2. **Focus fought the browser.** `mousedown` moved focus away from the input that was opening, so the old code retried `focus()` at 0/60/150 ms and ignored blurs for 250 ms. The canvas now simply cancels that default `mousedown` while text is being created or edited (`useWebInput.web.ts`); no timers.
+3. **A second click on a new or tiny box ended the edit** (the box was one character wide). The editing area now has a minimum width and the store decides whether a press is "inside" the open box (`draftBounds`), instead of relying on DOM event order.
+4. **A click nudged the object** and added undo steps (no drag threshold on move). Moves now wait for 4 px of travel.
+5. **Layout could not wrap or expand** (a single-line input with `white-space: pre` and a separate measuring effect). Text is now laid out by one pure engine (`logic/textFlow.ts`) used for drawing, caret, hit-testing and export, so they cannot disagree.
+6. **`sanitizeObjects` rebuilt text objects field by field**, so any new formatting would have vanished on reload. It now keeps (and validates) `spans`, `align`, `fixedWidth`.
+7. **The browser reports selection changes a moment after the key**, so a toolbar press right after Shift+Arrow acted on a stale selection. Toolbar actions now read the input's selection first.
+
+### Built
+- **Editor (web).** A hidden `<textarea>` supplies typing, IME and clipboard events; Skia draws the text, selection and caret from the shared layout, so the caret is exact at every zoom with superscripts, bold, wrapping. Multiline, word wrap, Enter, Backspace/Delete, arrows, Shift+arrows, Home/End (by visual line), Up/Down (by visual line, keeps column), Ctrl+arrows, Ctrl+A, mouse caret placement, drag selection, double-click = word, triple-click = paragraph, Tab = 4 spaces. Escape / Ctrl+Enter finish and select the box; clicking away saves; an empty box disappears. Ctrl+Z / Ctrl+Y inside the editor undo the text only; the whole edit is one board undo step. Ctrl/Cmd+B, I, U, `+` (superscript), `=` (subscript).
+- **Rich text model.** `TextObject` keeps `text` as the source of truth plus `spans` (bold, italic, underline, superscript, subscript ranges), `align`, `fixedWidth`. Spans are edited per character (`logic/textRuns.ts`), so they cannot overlap or drift. Typing continues the formatting of the previous character; toggles at a bare caret apply to what is typed next. Superscript/subscript are drawn smaller and shifted by the layout, not by faking the font size, so cursor positions stay exact.
+- **Resizing.** Two side grips on a selected text box set the width; the text wraps and the height follows (font size never changes). One undo step per drag.
+- **Select / drag / edit are separate.** Select tool: click selects, double-click edits (caret where you clicked), drag moves (one undo step, exact at any zoom). Text tool: click on empty space creates and focuses; click on text edits it; a press inside the open box places the caret instead of moving it.
+- **Math and symbols keyboard.** Categories (Common, Greek, Operators, Arrows, Sets & logic, Physics, Fractions), search box (by name or character), a `(a)/(b)` general-fraction button, one tap inserts at the caret without losing focus. Every symbol is checked by a test against the bundled fonts' glyph tables.
+- **Font menu (added after the first pass).** Eight families in the toolbar: Inter, Atkinson Hyperlegible, Nunito (sans), Source Serif 4, Lora (serif), JetBrains Mono (mono), Caveat, Patrick Hand (handwriting). Per text box; applies to the edited box or the selected boxes (one undo step), saved with the board, kept by copy/duplicate, used by export, and new boxes start with the last font chosen (remembered between sessions). Files (SIL OFL, licences beside them, ~5.9 MB in total) load only when a box uses them. Inter, Atkinson Hyperlegible and JetBrains Mono have real bold/italic files; the others use Skia's synthetic bold/slant. Letters a font lacks (e.g. Greek in Caveat) fall back to Inter, then to the math font.
+- **After a text box ends the tool returns to Select** (Escape, click away, or an emptied box); Escape also selects the box. Choosing another tool while editing keeps that tool.
+- **Arrow keys leave super/subscript.** With the caret at the end of superscript or subscript text (or with the script switched on but nothing typed yet), Left or Right first leaves the script, without moving the caret, so the next character is plain; the next press moves normally. In the middle of a script the arrow just moves.
+- **Symbol font.** Inter lacks ∈ ∉ ⊂ ∪ ∩ ∛ ∇ ℏ ℝ and more, which would draw as empty boxes on the board and in exports. With your permission **Noto Sans Math (SIL OFL, ~1 MB, `client/assets/fonts`, licence included)** was added as a per-character fallback, used by drawing, measuring and export alike.
+- **Formatting toolbar** (above the box, flips below near the top, clamped to the canvas, never over the caret): size −/+, colour, B, I, U, superscript, subscript, alignment, symbols (editing only). It also formats whole selected text boxes (one undo step). Presses on it never take focus from the editor.
+- **Clipboard.** Ctrl/Cmd+C, X, V use the browser's real clipboard events for whole objects (formatting preserved, new ids, each paste a step further along, one undo step), plus plain text from other applications becoming a new text box; Ctrl/Cmd+D duplicates. Inside the editor the browser handles copy/paste of characters (our handler adds the formatting). A key-press fallback covers browsers that send no event with nothing selected. Delete/Backspace and tool letters are ignored while a text box is open.
+- Export and the AI image use the same layout (wrapping, scripts, underline, symbols).
+
+### Verified
+- `npm run typecheck` clean; tests: shared 17, server 172, client 337 (all passing, no network); the new client suites cover the layout engine (wrapping, caret, selection, hit-testing, scripts), span algebra, store editing (typing diffs, formatting, undo, commit, resize, duplicate/copy/cut/paste with fake clipboard data), board persistence of formatting, toolbar placement and the symbol set against the real font files.
+- In the browser (Expo web, real mouse and key events through the browser pane): one click with the Text tool creates and focuses a box; spaces, Enter and the letter `p` type without ending the edit or switching tools; Home/Right/Shift+Right then the superscript/subscript buttons formatted the right characters even when pressed immediately; the symbol keyboard inserted π, θ, λ, ±, ∑, ∂ and (from search) ∪ at the caret and kept editing; Escape finished and selected the box; drag moved a box by exactly the pointer travel at 100% and 150% zoom, as one undo step; the side grip re-wrapped the text without changing the font; double-click on the Select tool edited with the caret where clicked and did not create a second box; double-click on empty space with the Text tool made one box; a click away from an empty box left nothing behind; Ctrl+D, Ctrl+C then Ctrl+V (twice) made copies with new ids at +24 and +48; Ctrl+Z / Ctrl+Y walked back and forward through move, edit and paste; reload restored text, formatting, fixed width and position; the image export matched what the board draws (bold, superscripts, subscript, underline, Greek, ∈ ℝ ∪ ∛); changing the colour from the toolbar worked.
+
+### Not verified / known limits
+- **Native (iOS/Android) editing** compiles and type-checks but was not run: it keeps a plain input (no custom caret, no formatting shortcuts), though existing formatting stays attached to characters. The toolbar and symbol keyboard are shared code but were only run on web.
+- **Real OS copy/paste.** The browser pane's key events do not trigger the browser's native clipboard commands, so character copy/paste inside the editor and object copy/paste were exercised with synthetic `ClipboardEvent`s and the key-press fallback, not with a real system clipboard round trip. Pasting from another application is covered by unit tests only.
+- **IME composition** and the on-screen keyboard on phones are untested.
+- Font is per text box, not per character, and the menu lists names only (no preview in each font). Source Serif 4, Lora, Nunito and Caveat are variable fonts: the regular weight is used, so their bold is synthetic. Inter's bold/italic files are from release 3.19 while the bundled regular is a different build, so tiny metric differences are possible.
+- Colour is per text box, not per character. No justify alignment, lists, links or arbitrary rich text; vector notation with an arrow above the letter is not supported (use bold, ∇, î, ĵ, ∥, ⊥ from the Physics tab).
+- Kerning is not applied (each glyph uses its own advance), which is also how the board and export draw, so they agree.
+- A text box is limited to 5000 characters.
+- The symbol keyboard docks at the bottom of the canvas when there is no room beside the toolbar, which covers the bottom tool rail on small screens until it is closed.
+
 ## Later
 - Phase 5: session save/restore, polish, deployment, demo script.

@@ -1,12 +1,12 @@
 import { useRef } from "react";
 import { usePanGesture, usePinchGesture, useSimultaneousGestures } from "react-native-gesture-handler";
 import { createDoubleTapDetector } from "./logic/doubleTap";
-import { handleAt, HANDLE_RADIUS_PX, hitTest, resizeFromCorner, translateObject } from "./logic/hitTest";
+import { handleAt, HANDLE_RADIUS_PX, hitTest, rectContains, resizeFromCorner, textHandleAt, translateObject, type TextEdge } from "./logic/hitTest";
 import { normalizeRect, objectsInMarquee } from "./logic/selection";
 import { screenToWorld } from "./logic/viewport";
 import { pointerModifiers } from "./pointerState";
 import type { Corner, ImageObject, Point, CanvasObject, TextObject } from "./types";
-import { effectiveTool, useWhiteboardStore } from "./whiteboardStore";
+import { draftBounds, effectiveTool, useWhiteboardStore } from "./whiteboardStore";
 
 const SELECT_TOLERANCE_PX = 6;
 /** Pointer travel (screen pixels) after which a press on text becomes a drag instead of a click. */
@@ -17,8 +17,10 @@ type Interaction =
   | { kind: "draw" }
   | { kind: "erase"; last: Point }
   | { kind: "pan" }
-  | { kind: "move"; bases: CanvasObject[]; start: Point }
+  /** A press on an object: nothing moves until the pointer has travelled a few pixels, so a click never nudges it. */
+  | { kind: "move"; bases: CanvasObject[]; start: Point; startScreen: Point; moved: boolean }
   | { kind: "resize"; base: ImageObject; corner: Corner }
+  | { kind: "resize-text"; base: TextObject; edge: TextEdge }
   /** Pressed on existing text with the Text tool: a click edits it, a drag moves it. */
   | { kind: "text-press"; base: TextObject; start: Point; startScreen: Point; moved: boolean }
   | { kind: "marquee"; start: Point; base: string[] };
@@ -26,6 +28,10 @@ type Interaction =
 const store = () => useWhiteboardStore.getState();
 const doubleTap = createDoubleTapDetector();
 const toWorld = (screen: Point) => screenToWorld(store().viewport, screen);
+const screenOf = (world: Point): Point => {
+  const { viewport } = store();
+  return { x: world.x * viewport.scale + viewport.x, y: world.y * viewport.scale + viewport.y };
+};
 
 /**
  * Turns pointer input into store actions. One-pointer input does whatever the
@@ -52,6 +58,7 @@ export function useBoardGestures() {
         interaction.current = { kind: "draw" };
       } else if (tool === "text") {
         const press = store().pressTextTool(world);
+        // "inside" is a press on the box being edited: the editor owns it (caret placement), the board ignores it.
         interaction.current =
           press.kind === "on-text"
             ? { kind: "text-press", base: press.object, start: world, startScreen: screen, moved: false }
@@ -82,11 +89,17 @@ export function useBoardGestures() {
           store().panBy(e.changeX, e.changeY);
           break;
         case "move": {
+          const travelled = Math.hypot(e.x - current.startScreen.x, e.y - current.startScreen.y);
+          if (!current.moved && travelled < DRAG_THRESHOLD_PX) break;
+          current.moved = true;
           const dx = world.x - current.start.x;
           const dy = world.y - current.start.y;
           store().replaceObjects(current.bases.map((o) => translateObject(o, dx, dy)));
           break;
         }
+        case "resize-text":
+          store().resizeText(current.base, current.edge, world.x);
+          break;
         case "resize":
           store().replaceObject({ ...current.base, ...resizeFromCorner(current.base, current.corner, world) });
           break;
@@ -116,14 +129,19 @@ export function useBoardGestures() {
         if (current.moved) store().endTransaction();
         else store().beginTextEditAt(current.start);
       }
-      else if (current.kind === "erase" || current.kind === "move" || current.kind === "resize") {
+      else if (current.kind === "erase" || current.kind === "move" || current.kind === "resize" || current.kind === "resize-text") {
         store().endTransaction();
       }
     },
   });
 
   const beginSelect = (world: Point) => {
-    store().commitTextEdit(); // clicking away from a text box being edited finishes it
+    const open = store().textDraft;
+    if (open) {
+      // A press on the box being edited is the editor's; only a press away from it finishes the edit.
+      if (rectContains(draftBounds(open), world)) return;
+      store().commitTextEdit();
+    }
     const { objects, selectedIds, viewport } = store();
     const shift = pointerModifiers.shift;
 
@@ -133,6 +151,14 @@ export function useBoardGestures() {
     if (only?.kind === "image" && corner) {
       store().beginTransaction();
       interaction.current = { kind: "resize", base: only, corner };
+      return;
+    }
+
+    // A lone selected text box shows grips on its sides: dragging one sets the width and the text re-wraps.
+    const edge = only?.kind === "text" ? textHandleAt(only, world, viewport.scale, (HANDLE_RADIUS_PX + 4) / viewport.scale) : null;
+    if (only?.kind === "text" && edge) {
+      store().beginTransaction();
+      interaction.current = { kind: "resize-text", base: only, edge };
       return;
     }
 
@@ -152,7 +178,7 @@ export function useBoardGestures() {
       const ids = selectedIds.includes(hit.id) ? selectedIds : [hit.id];
       store().setSelection(ids);
       store().beginTransaction();
-      interaction.current = { kind: "move", bases: objects.filter((o) => ids.includes(o.id)), start: world };
+      interaction.current = { kind: "move", bases: objects.filter((o) => ids.includes(o.id)), start: world, startScreen: screenOf(world), moved: false };
       return;
     }
 

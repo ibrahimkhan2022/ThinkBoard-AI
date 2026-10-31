@@ -5,6 +5,8 @@ export interface ActiveAnnotation {
   /** Canvas (world) coordinates. */
   rect: Rect;
   isMock: boolean;
+  /** The numbered line this highlight marks, when it came from one. */
+  line?: number;
 }
 
 interface AnnotationState {

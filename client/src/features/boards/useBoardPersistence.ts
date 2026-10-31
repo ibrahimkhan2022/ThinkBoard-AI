@@ -49,6 +49,7 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus; retr
         background: s.background,
         objects: s.objects,
         viewport: s.viewport,
+        chat: useTutorStore.getState().messages,
         objectCount: s.objects.length,
         updatedAt: contentDirty ? Date.now() : meta.updatedAt,
       };
@@ -113,6 +114,15 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus; retr
       saveTimer = setTimeout(() => void save(), SAVE_DELAY_MS);
     };
 
+    // The conversation is saved with the board.
+    const unsubscribeChat = useTutorStore.subscribe((tutor, prev) => {
+      if (!ready || tutor.messages === prev.messages) return;
+      contentDirty = true;
+      report("unsaved");
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => void save(), SAVE_DELAY_MS);
+    });
+
     const flush = () => {
       void save();
       void makeThumbnail();
@@ -143,7 +153,7 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus; retr
       }
       meta = toMeta(doc);
       useWhiteboardStore.getState().loadBoard(doc);
-      useTutorStore.getState().reset();
+      useTutorStore.getState().loadChat(doc.chat);
       useAnnotationStore.getState().setAnnotation(null);
       ready = true;
       report("saved");
@@ -154,6 +164,7 @@ export function useBoardPersistence(boardId: string): { status: SaveStatus; retr
       retryRef.current = null;
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility);
       unsubscribe();
+      unsubscribeChat();
       if (ready) flush();
       clearTimeout(saveTimer);
       clearTimeout(thumbnailTimer);

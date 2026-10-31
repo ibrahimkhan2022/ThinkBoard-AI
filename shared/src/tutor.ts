@@ -38,8 +38,17 @@ export const TutorResponseSchema = z.object({
   /** 1-based index of the earliest incorrect step, when one was identified. */
   errorStep: z.number().int().positive().optional(),
   confidence: z.number().min(0).max(1).optional(),
-  /** Normalized 0..1000 relative to the image the model saw. */
+  /** Normalized 0..1000 relative to the image the model saw. A fallback: the numbered line in `errorStep` is preferred. */
   highlight: NormalizedBoxSchema.optional(),
+  /**
+   * The next step written as equation lines, e.g. ["5x - 10 + 10 = 0 + 10", "5x = 10"].
+   * Only for the "next step" and "how to start" actions, never the finished answer.
+   */
+  stepPreview: z.array(z.string().min(1).max(160)).max(3).optional(),
+  /** The tutor needs the student to say which problem or part they mean; the reply is the question. */
+  needsInput: z.boolean().optional(),
+  /** The question was not about studying; nothing was answered. */
+  offTopic: z.boolean().optional(),
   revealAnswer: z.boolean(),
 });
 export type TutorResponse = z.infer<typeof TutorResponseSchema>;
@@ -55,6 +64,13 @@ export const MOCK_SCENARIOS = [
 export const MockScenarioSchema = z.enum(MOCK_SCENARIOS);
 export type MockScenario = z.infer<typeof MockScenarioSchema>;
 
+/** A recent turn of the conversation, so follow-up questions make sense. Kept short on purpose (every token costs money). */
+export const HistoryItemSchema = z.object({
+  role: z.enum(["student", "tutor"]),
+  text: z.string().max(600),
+});
+export type HistoryItem = z.infer<typeof HistoryItemSchema>;
+
 export const TutorRequestSchema = z
   .object({
     sessionId: z.string().min(1).max(100),
@@ -65,6 +81,10 @@ export const TutorRequestSchema = z
     /** Base64 image of `region` (what the model sees). Omitted when there is nothing to show. */
     imageBase64: z.string().max(7_000_000).optional(),
     imageMimeType: z.enum(["image/png", "image/jpeg"]).optional(),
+    /** Number of lines of work labelled 1..N (blue circles in the left margin) in the image. */
+    labeledLines: z.number().int().min(0).max(40).optional(),
+    /** The last few turns of this conversation, oldest first. */
+    history: z.array(HistoryItemSchema).max(6).optional(),
     /** Test aid: only the mock provider reads this; real providers ignore it. */
     mockScenario: MockScenarioSchema.optional(),
   })

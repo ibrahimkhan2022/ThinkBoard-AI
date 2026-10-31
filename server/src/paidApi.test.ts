@@ -52,6 +52,12 @@ describe("provider selection: paid calls need every switch", () => {
     expect(s.usage).toBeUndefined();
   });
 
+  it("runs Ollama with thinking off by default (8 s instead of ~2 min on gemma4:12b)", () => {
+    expect(loadConfig({}).OLLAMA_THINK).toBe("off");
+    expect(loadConfig({ OLLAMA_THINK: "auto" }).OLLAMA_THINK).toBe("auto");
+    expect(() => loadConfig({ OLLAMA_THINK: "maybe" })).toThrow();
+  });
+
   it("applies cost-conscious defaults: capped output and low reasoning effort", () => {
     const c = loadConfig({});
     expect(c.META_MAX_OUTPUT_TOKENS).toBe(1200);

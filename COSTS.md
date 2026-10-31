@@ -30,6 +30,8 @@ Reasoning tokens are billed as output. Image input is billed as input tokens (ab
 | **Typical total** | | **≈ $0.004–0.008** |
 | **Worst case (every cap hit)** | | **≈ $0.0085–0.010** |
 
+Chat history (the last 6 turns, each cut to 600 characters, answers reduced to their message) adds at most about 900 input tokens (≈ $0.001) to a follow-up, and the budget gate's worst-case reservation includes it. Off-topic questions are refused by the server before any model call, so they cost nothing.
+
 So the ~$150 credit covers on the order of **15,000–35,000 checks**; the gate below limits that far more tightly. These figures are estimates from published prices and token rules. The first real call should be compared against Meta's dashboard (see "Verify after the first real call").
 
 ## Budget controls (implemented, server-side)

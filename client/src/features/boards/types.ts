@@ -1,3 +1,4 @@
+import type { ChatMessage } from "../tutor/chatTypes";
 import type { Background, CanvasObject, Viewport } from "../whiteboard/types";
 
 /** What the dashboard needs. Small on purpose: the list never loads board contents. */
@@ -15,6 +16,8 @@ export interface BoardMeta {
 export interface BoardContent {
   objects: CanvasObject[];
   viewport: Viewport;
+  /** The tutor conversation for this board. */
+  chat: ChatMessage[];
 }
 
 export type BoardDoc = BoardMeta & BoardContent;

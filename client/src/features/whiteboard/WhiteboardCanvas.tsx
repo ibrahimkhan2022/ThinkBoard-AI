@@ -1,9 +1,13 @@
 import { Canvas, Group, Rect } from "@shopify/react-native-skia";
 import { useMemo, useRef, type ComponentRef } from "react";
-import { Platform, StyleSheet, View, type LayoutChangeEvent, type ViewStyle } from "react-native";
+import { Platform, StyleSheet, useWindowDimensions, View, type LayoutChangeEvent, type ViewStyle } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import { colors } from "../../lib/theme";
 import { AnnotationOverlay } from "../annotations/AnnotationOverlay";
+import { useUiStore, WIDE_BREAKPOINT } from "../layout/uiStore";
+import { FocusOverlay } from "../tutor/FocusOverlay";
+import { useAIFocus } from "../tutor/useAIFocus";
+import { useTutorStore } from "../tutor/tutorStore";
 import { prepareImage } from "./import/prepareImage";
 import { BackgroundLayer } from "./BackgroundLayer";
 import { EraserCursor } from "./EraserCursor";
@@ -12,14 +16,20 @@ import { StrokeView } from "./StrokeView";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { useTypeface } from "./skiaFont";
 import { TextEditor } from "./TextEditor";
-import { TextView } from "./TextView";
+import { TextDraftView } from "./TextView";
 import { useBoardGestures } from "./useBoardGestures";
 import { useWebInput } from "./useWebInput";
 import { effectiveTool, useWhiteboardStore } from "./whiteboardStore";
 
 // Dev-only handles so the board can be driven from the browser console.
 if (__DEV__ && Platform.OS === "web") {
-  Object.assign(globalThis, { __whiteboard: useWhiteboardStore, __prepareImage: prepareImage });
+  Object.assign(globalThis, {
+    __whiteboard: useWhiteboardStore,
+    __prepareImage: prepareImage,
+    // Lets the exporter be driven from the console to check what an export (and the AI image) will contain.
+    __renderRegion: (...args: Parameters<typeof import("./export/renderRegion").renderRegion>) =>
+      import("./export/renderRegion").then((m) => m.renderRegion(...args)),
+  });
 }
 
 const CURSOR = { pen: "crosshair", eraser: "none", text: "text", select: "default", hand: "grab" } as const;
@@ -46,6 +56,12 @@ export default function WhiteboardCanvas() {
   const textDraft = useWhiteboardStore((s) => s.textDraft);
   const typeface = useTypeface();
 
+  // While the tutor panel is open, outline what it would look at (and its line numbers).
+  const isWide = useWindowDimensions().width >= WIDE_BREAKPOINT;
+  const tutorOpen = useUiStore((s) => (isWide ? s.aiPanelOpen : s.drawerOpen));
+  const showFocus = useTutorStore((s) => s.showFocusOnBoard);
+  const focus = useAIFocus();
+
   const surface = useRef<ComponentRef<typeof View>>(null);
   const gesture = useBoardGestures();
   useWebInput(surface);
@@ -63,7 +79,10 @@ export default function WhiteboardCanvas() {
             <BackgroundLayer background={background} viewport={viewport} canvasSize={canvasSize} />
             <ObjectsLayer objects={objects} hiddenId={textDraft?.editingId ?? null} typeface={typeface} />
             {activeStroke && <StrokeView stroke={activeStroke} />}
-            {textDraft && <TextView object={textDraft} typeface={typeface} />}
+            {textDraft && <TextDraftView draft={textDraft} typeface={typeface} scale={viewport.scale} chrome={Platform.OS === "web"} />}
+            {tutorOpen && showFocus && focus && !activeStroke && !textDraft && (
+              <FocusOverlay ai={focus} scale={viewport.scale} typeface={typeface} />
+            )}
             <AnnotationOverlay scale={viewport.scale} />
             <SelectionOverlay objects={selected} scale={viewport.scale} />
             {marquee && (

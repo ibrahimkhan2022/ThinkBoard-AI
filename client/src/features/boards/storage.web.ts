@@ -52,13 +52,13 @@ function createIndexedDbStorage(): BoardStorage {
         request(tx.objectStore(CONTENT).get(id)),
       ]);
       if (!meta) return null;
-      return sanitizeDoc({ ...meta, objects: content?.objects, viewport: content?.viewport });
+      return sanitizeDoc({ ...meta, objects: content?.objects, viewport: content?.viewport, chat: content?.chat });
     },
 
     async save(doc) {
       const tx = (await database()).transaction([META, CONTENT], "readwrite");
       tx.objectStore(META).put(toMeta(doc));
-      tx.objectStore(CONTENT).put({ id: doc.id, objects: doc.objects, viewport: doc.viewport });
+      tx.objectStore(CONTENT).put({ id: doc.id, objects: doc.objects, viewport: doc.viewport, chat: doc.chat });
       await done(tx);
     },
 

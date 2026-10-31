@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 export const colors = {
   background: "#F6F6F3",
   surface: "#FFFFFF",
@@ -15,3 +17,9 @@ export const colors = {
 } as const;
 
 export const radius = { sm: 8, md: 12, lg: 16 } as const;
+
+/** Monospace face for equations, so digits and symbols line up like on paper. */
+export const mono = (Platform.select({
+  web: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+  default: "monospace",
+}) ?? "monospace") as string;

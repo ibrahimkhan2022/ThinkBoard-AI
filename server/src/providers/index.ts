@@ -47,6 +47,7 @@ export function selectProvider(config: AppConfig, options: SelectOptions = {}): 
           model: config.OLLAMA_MODEL,
           timeoutMs: config.OLLAMA_TIMEOUT_MS,
           maxOutputTokens: 800,
+          think: config.OLLAMA_THINK === "auto" ? undefined : config.OLLAMA_THINK === "on",
           fetchImpl: options.fetchImpl,
         }),
         paid: false,

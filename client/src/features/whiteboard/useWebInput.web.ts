@@ -1,6 +1,7 @@
 import { useEffect, type RefObject } from "react";
 import { pointerModifiers, useHoverStore } from "./pointerState";
-import { useWhiteboardStore } from "./whiteboardStore";
+import { isEditorUi } from "./editorFocus";
+import { effectiveTool, useWhiteboardStore } from "./whiteboardStore";
 
 /**
  * Web-only pointer input on the canvas surface (keyboard lives in useShortcuts):
@@ -28,6 +29,18 @@ export function useWebInput(surface: RefObject<unknown>) {
       }
     };
 
+    // The browser moves focus to the clicked element on mousedown, which would pull it out of the text input
+    // that is opening (or open). While text is being created or edited the canvas keeps focus where it is; any
+    // other control that has focus (the chat box, a button) is released so typing never goes to it by mistake.
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const s = store();
+      if (!s.textDraft && effectiveTool(s) !== "text") return;
+      e.preventDefault();
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active !== document.body && !isEditorUi(active)) active.blur?.();
+    };
+
     let middleDrag: { x: number; y: number } | null = null;
     const onPointerDown = (e: PointerEvent) => {
       pointerModifiers.shift = e.shiftKey;
@@ -52,6 +65,7 @@ export function useWebInput(surface: RefObject<unknown>) {
 
     element.addEventListener("wheel", onWheel, { passive: false });
     element.addEventListener("pointerdown", onPointerDown, { capture: true });
+    element.addEventListener("mousedown", onMouseDown, { capture: true });
     element.addEventListener("pointermove", onPointerMove);
     element.addEventListener("pointerleave", onLeave);
     window.addEventListener("pointerup", endMiddleDrag);
@@ -59,6 +73,7 @@ export function useWebInput(surface: RefObject<unknown>) {
     return () => {
       element.removeEventListener("wheel", onWheel);
       element.removeEventListener("pointerdown", onPointerDown, { capture: true });
+      element.removeEventListener("mousedown", onMouseDown, { capture: true });
       element.removeEventListener("pointermove", onPointerMove);
       element.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("pointerup", endMiddleDrag);

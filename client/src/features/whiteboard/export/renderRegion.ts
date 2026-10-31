@@ -1,18 +1,31 @@
 import type { Rect } from "@thinkboard/shared";
 import { ImageFormat, PaintStyle, Skia, StrokeCap, StrokeJoin } from "@shopify/react-native-skia";
 import { computeExportSize } from "../logic/exportPlan";
-import { textLines } from "../logic/textLayout";
-import { fontFor, loadTypeface } from "../skiaFont";
+import { flowOf } from "../logic/textMetrics";
+import { ensureFontsFor, fontFor, loadTypefaces, segmentFont } from "../skiaFont";
 import { loadSkImage } from "../skiaImages";
 import { buildStrokePath } from "../strokePath";
 import type { CanvasObject } from "../types";
+
+/** A numbered badge added to the image (not part of the board): marks one line of the student's work. */
+export interface LineMarker {
+  label: string;
+  /** Vertical centre of the line, in canvas units. */
+  y: number;
+}
 
 export interface RenderOptions {
   /** Longest output edge in pixels. */
   maxDimension?: number;
   format?: "png" | "jpeg";
   background?: string;
+  /** Numbered blue badges drawn in the left margin, one per line, so the AI can name a line by number. */
+  markers?: LineMarker[];
 }
+
+const MARKER_COLOR = "#2563EB";
+/** Badge size in output pixels, so it stays legible however far the board is zoomed out. */
+const MARKER_RADIUS_PX = 12;
 
 export interface RenderedRegion {
   base64: string;
@@ -30,7 +43,7 @@ export interface RenderedRegion {
 export async function renderRegion(
   objects: CanvasObject[],
   region: Rect,
-  { maxDimension = 2048, format = "png", background = "#FFFFFF" }: RenderOptions = {},
+  { maxDimension = 2048, format = "png", background = "#FFFFFF", markers = [] }: RenderOptions = {},
 ): Promise<RenderedRegion> {
   const size = computeExportSize(region, maxDimension);
   const surface = Skia.Surface.Make(size.width, size.height);
@@ -55,7 +68,10 @@ export async function renderRegion(
     );
   }
 
-  const typeface = objects.some((o) => o.kind === "text") ? await loadTypeface() : null;
+  // Every font the text uses (its family, bold/italic files, the symbol font), so the export is drawn the way the board is.
+  const texts = objects.filter((o) => o.kind === "text");
+  if (texts.length > 0) await ensureFontsFor(texts);
+  const typeface = texts.length > 0 || markers.length > 0 ? (await loadTypefaces()).primary : null;
   for (const object of objects) {
     if (object.kind === "image") continue;
     const paint = Skia.Paint();
@@ -69,8 +85,36 @@ export async function renderRegion(
       canvas.drawPath(buildStrokePath(object.points), paint);
     } else if (typeface) {
       paint.setColor(Skia.Color(object.color));
-      const font = fontFor(typeface, object.fontSize);
-      for (const line of textLines(object)) canvas.drawText(line.text, line.x, line.baselineY, paint, font);
+      // The same layout the board draws: wrapping, alignment, bold/italic, super/subscripts, underline.
+      for (const line of flowOf(object).lines) {
+        for (const seg of line.segments) {
+          const font = segmentFont(seg);
+          if (!font) continue;
+          const left = object.x + seg.x;
+          const baseline = object.y + seg.baseline;
+          if (seg.text.trim() !== "") canvas.drawText(seg.text, left, baseline, paint, font);
+          if (seg.u) canvas.drawRect(Skia.XYWHRect(left, baseline + seg.size * 0.12, seg.width, Math.max(1, seg.size / 16)), paint);
+        }
+      }
+    }
+  }
+
+  // Line badges go on last, in the left margin, in a colour the student's pen never uses by default.
+  if (typeface && markers.length > 0) {
+    const radius = MARKER_RADIUS_PX / size.scale;
+    const font = fontFor(typeface, (MARKER_RADIUS_PX * 1.25) / size.scale);
+    const fill = Skia.Paint();
+    fill.setAntiAlias(true);
+    fill.setColor(Skia.Color(MARKER_COLOR));
+    const ink = Skia.Paint();
+    ink.setAntiAlias(true);
+    ink.setColor(Skia.Color("#FFFFFF"));
+    const cx = region.x + radius + 6 / size.scale;
+    for (const marker of markers) {
+      canvas.drawCircle(cx, marker.y, radius, fill);
+      const width = font.getTextWidth(marker.label);
+      // Baseline sits about a third of the font size below the centre of the circle.
+      canvas.drawText(marker.label, cx - width / 2, marker.y + (MARKER_RADIUS_PX * 1.25 * 0.36) / size.scale, ink, font);
     }
   }
 

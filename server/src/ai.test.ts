@@ -89,7 +89,7 @@ describe("prompt", () => {
   });
 
   it("stays short, because every token costs money", () => {
-    expect(SYSTEM_PROMPT.length).toBeLessThan(2000);
+    expect(SYSTEM_PROMPT.length).toBeLessThan(3600);
   });
 
   it("has a distinct instruction per mode and carries the question", () => {

@@ -1,5 +1,6 @@
 import { readStored, writeStored } from "../../lib/localStore";
 import { parseHexColor } from "./logic/color";
+import { isFontFamily, type FontFamilyId } from "./logic/fontFamilies";
 
 const KEY = "thinkboard.tools.v1";
 
@@ -10,6 +11,7 @@ export interface ToolPrefs {
   penColor: string;
   penWidth: number;
   fontSize: number;
+  fontFamily: FontFamilyId;
   eraserSize: number;
   eraserMode: EraserMode;
   recentColors: string[];
@@ -29,6 +31,7 @@ export function sanitizePrefs(raw: unknown): Partial<ToolPrefs> {
   if (penWidth !== undefined) prefs.penWidth = penWidth;
   const fontSize = num(r.fontSize, 8, 160);
   if (fontSize !== undefined) prefs.fontSize = Math.round(fontSize);
+  if (isFontFamily(r.fontFamily)) prefs.fontFamily = r.fontFamily;
   const eraserSize = num(r.eraserSize, 4, 60);
   if (eraserSize !== undefined) prefs.eraserSize = Math.round(eraserSize);
   if (r.eraserMode === "object" || r.eraserMode === "segment") prefs.eraserMode = r.eraserMode;
