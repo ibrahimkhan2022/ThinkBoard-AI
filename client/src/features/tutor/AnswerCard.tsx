@@ -24,6 +24,9 @@ export function AnswerCard({ message, onShowOnBoard }: { message: ChatMessage; o
   const status = STATUS_DISPLAY[response.status];
   const asking = response.needsInput === true;
   const offTopic = response.offTopic === true;
+  // What the app re-did with its own calculator is stated as such; everything else is the model's judgement.
+  const calculated = response.arithmetic?.map((c) => c.line) ?? [];
+  const checkedNote = calculated.length > 0 ? `arithmetic on ${calculated.length === 1 ? "line" : "lines"} ${calculated.join(", ")} re-checked with a calculator, the rest not checked by a maths solver` : "not checked by a maths solver";
 
   return (
     <View style={styles.row}>
@@ -45,6 +48,10 @@ export function AnswerCard({ message, onShowOnBoard }: { message: ChatMessage; o
             <View style={[styles.chip, { backgroundColor: colors.background }]}>
               <Eye size={12} color={colors.muted} strokeWidth={2.25} />
               <Text style={[styles.chipText, { color: colors.muted }]}>Study focus</Text>
+            </View>
+          ) : response.revealAnswer ? (
+            <View style={[styles.chip, { backgroundColor: colors.accentSoft }]}>
+              <Text style={[styles.chipText, { color: colors.accent }]}>Answer</Text>
             </View>
           ) : (
             <View style={[styles.chip, { backgroundColor: status.background }]}>
@@ -88,7 +95,7 @@ export function AnswerCard({ message, onShowOnBoard }: { message: ChatMessage; o
 
         {!offTopic && (
         <Text style={styles.footnote}>
-          AI suggestion · not checked by a maths solver
+          AI suggestion · {checkedNote}
           {response.confidence !== undefined ? ` · confidence ${Math.round(response.confidence * 100)}%` : ""}
           {message.focus && message.focus.source !== "none"
             ? ` · looked at ${FOCUS_LABEL[message.focus.source]}${message.focus.lineCount ? ` (${message.focus.lineCount} line${message.focus.lineCount === 1 ? "" : "s"})` : ""}`

@@ -74,3 +74,62 @@ describe("splitMathSegments", () => {
     expect(splitMathSegments("a `b c")).toEqual([{ text: "a b c", math: false }]);
   });
 });
+
+describe("plain ASCII maths is shown the way it is written", () => {
+  it("turns powers, products and pi inside an equation into real symbols", () => {
+    expect(normalizeMathText("Use `a = 4 * pi^2 * r * f^2` here")).toBe("Use `a = 4 × π² × r × f²` here");
+    expect(normalizeMathText("`x^-1 + y^{12} + z^(2)`")).toBe("`x⁻¹ + y¹² + z²`");
+    expect(normalizeMathText("`2**3 <= 9`")).toBe("`2³ ≤ 9`");
+    expect(normalizeMathText("`sqrt(x) -> y`")).toBe("`√(x) → y`");
+    expect(normalizeMathText("`a_1 + a_n`")).toBe("`a₁ + aₙ`");
+  });
+
+  it("leaves what cannot be written as a superscript as typed, and the rest of the expression right", () => {
+    expect(normalizeMathText("`x^(a+b) + y^2`")).toBe("`x^(a+b) + y²`");
+    expect(normalizeMathText("`x^2y`")).toBe("`x²y`");
+  });
+
+  it("fixes a power written outside an equation too, but leaves other carets alone", () => {
+    expect(normalizeMathText("Plug in f^2 and r^3 first")).toBe("Plug in f² and r³ first");
+    expect(normalizeMathText("press ^ to continue")).toBe("press ^ to continue");
+  });
+
+  it("is idempotent and keeps currency and plain text intact", () => {
+    const once = normalizeMathText("It costs $5 then `4 * pi^2`");
+    expect(normalizeMathText(once)).toBe(once);
+    expect(once).toBe("It costs $5 then `4 × π²`");
+  });
+});
+
+describe("maths the model forgot to fence", () => {
+  it("tidies a product with pi and powers outside backticks", () => {
+    expect(normalizeMathText("Calculate 4 * pi^2 * 6 * 3^2")).toBe("Calculate 4 × π² × 6 × 3²");
+    expect(normalizeMathText("2 * 3 is six, and a pie is not pi")).toBe("2 × 3 is six, and a pie is not pi");
+  });
+});
+
+describe("subscripts are shown, not underscores", () => {
+  it("uses real subscript characters wherever they exist", () => {
+    expect(normalizeMathText("`v_0 + a_1t`")).toBe("`v₀ + a₁t`");
+    expect(normalizeMathText("`v_max`")).toBe("`vₘₐₓ`");
+    expect(normalizeMathText("`x_{n+1} = x_n`")).toBe("`xₙ₊₁ = xₙ`");
+    expect(normalizeMathText("`E_k = 1/2 m v^2`")).toBe("`Eₖ = 1/2 m v²`");
+  });
+
+  it("keeps a marker for the screen to draw when a letter has no subscript character", () => {
+    expect(normalizeMathText("`T_{eq}`")).toBe("`T_{eq}`");
+    expect(normalizeMathText("`T_eq`")).toBe("`T_{eq}`");
+    expect(normalizeMathText("`F_(net)`")).toBe("`Fₙₑₜ`");
+    expect(normalizeMathText("`T_(eq)`")).toBe("`T_{eq}`");
+  });
+
+  it("fixes subscripts written in a sentence, but not ordinary snake_case words", () => {
+    expect(normalizeMathText("Use v_0 and a_1 here, and T_{eq} later.")).toBe("Use v₀ and a₁ here, and T_{eq} later.");
+    expect(normalizeMathText("the variable my_var and file_name stay")).toBe("the variable my_var and file_name stay");
+  });
+
+  it("is idempotent", () => {
+    const once = normalizeMathText("`T_eq + v_0` and v_max");
+    expect(normalizeMathText(once)).toBe(once);
+  });
+});

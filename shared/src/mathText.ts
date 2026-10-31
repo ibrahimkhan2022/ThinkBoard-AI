@@ -4,7 +4,7 @@ const SUPERSCRIPT: Record<string, string> = {
 };
 const SUBSCRIPT: Record<string, string> = {
   "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
-  "+": "₊", "-": "₋", "−": "₋", "=": "₌", "(": "₍", ")": "₎", a: "ₐ", e: "ₑ", o: "ₒ", x: "ₓ", n: "ₙ", i: "ᵢ",
+  "+": "₊", "-": "₋", "−": "₋", "=": "₌", "(": "₍", ")": "₎", a: "ₐ", e: "ₑ", o: "ₒ", x: "ₓ", n: "ₙ", i: "ᵢ", h: "ₕ", k: "ₖ", l: "ₗ", m: "ₘ", p: "ₚ", s: "ₛ", t: "ₜ", j: "ⱼ", r: "ᵣ", u: "ᵤ", v: "ᵥ",
 };
 
 const SYMBOLS: Record<string, string> = {
@@ -38,7 +38,7 @@ function latexToPlain(input: string, trim = true): string {
   });
   s = s.replace(/_\s*\{([^{}]*)\}|_\s*([A-Za-z0-9])/g, (_m, braced: string | undefined, single: string | undefined) => {
     const sub = (braced ?? single ?? "").trim();
-    return mapAll(sub, SUBSCRIPT) ?? `_${sub}`;
+    return mapAll(sub, SUBSCRIPT) ?? `_{${sub}}`;
   });
   s = s.replace(/\\(left|right|big|Big|bigg|Bigg)\s*(?=[()[\]|.])/g, "");
   s = s.replace(/\\[,;:! ]|\\quad|\\qquad/g, " ");
@@ -47,6 +47,55 @@ function latexToPlain(input: string, trim = true): string {
   s = s.replace(/(?<=\S) - (?=\S)/g, " − "); // a real minus sign between terms
   s = s.replace(/ {2,}/g, " ");
   return trim ? s.trim() : s;
+}
+
+const EXPONENT = /\^\s*\{([^{}]*)\}|\^\s*\(([^()]*)\)|\^\s*([+\-−]?\d+|[A-Za-z])/g;
+const SUBSCRIPT_MARK = /_\s*\{([^{}]*)\}|_\s*\(([^()]*)\)|_\s*(\d+|[A-Za-z]+)/g;
+
+/** A subscript as Unicode when every character has one; else the canonical `_{...}` marker the screen draws as a real subscript. */
+const lower = (text: string) => {
+  const sub = text.trim();
+  return mapAll(sub, SUBSCRIPT) ?? `_{${sub}}`;
+};
+
+const raise = (text: string) =>
+  text.replace(EXPONENT, (m, braced?: string, round?: string, plain?: string) => mapAll((braced ?? round ?? plain ?? "").trim(), SUPERSCRIPT) ?? m);
+
+/**
+ * Inside an equation: the ASCII maths a model writes (x^2, 4 * pi, <=, sqrt(x)) shown the way it is written on paper
+ * (x², 4 × π, ≤, √(x)). Anything it cannot write properly (a long exponent such as ^(a+b)) is left as typed.
+ */
+function prettifyEquation(input: string): string {
+  let s = input.replace(/\*\*/g, "^");
+  s = raise(s);
+  s = s.replace(SUBSCRIPT_MARK, (_m, braced?: string, round?: string, plain?: string) => lower(braced ?? round ?? plain ?? ""));
+  s = s.replace(/\s*\*\s*/g, " × ");
+  s = s.replace(/\bpi\b/gi, "π").replace(/\btheta\b/g, "θ").replace(/\bsqrt\s*\(/g, "√(");
+  s = s.replace(/<=/g, "≤").replace(/>=/g, "≥").replace(/!=/g, "≠").replace(/->/g, "→");
+  return s;
+}
+
+/** Outside equations only the clear case is touched: a power written with ^ straight after a number, letter or bracket. */
+const prettifyLoose = (text: string) => prettifySubscripts(prettifyProducts(prettifyPowers(text)));
+
+/** v_0, x_1, v_max, T_{eq} written in a sentence: only after a lone letter, so snake_case words are left alone. */
+const prettifySubscripts = (text: string) =>
+  text.replace(/(?<![A-Za-z0-9_])([A-Za-z])_(\{[^{}]*\}|\d+|[A-Za-z]{1,4})(?![A-Za-z0-9_])/g, (_m, base: string, sub: string) => base + lower(sub.replace(/^\{|\}$/g, "")));
+
+/** " * " between two operands, and "pi" next to a power or a product, are maths even when the model forgot the backticks. */
+const prettifyProducts = (text: string) =>
+  text
+    .replace(/(?<=[\w)²³⁰-⁹]) \* (?=[\w(π])/g, " × ")
+    .replace(/\bpi(?=[²³⁰-⁹^]| [×*])/gi, "π")
+    .replace(/(?<=[×*] )pi\b/gi, "π");
+
+const prettifyPowers = (text: string) => text.replace(/(?<=[A-Za-z0-9)\]])(\^\s*\{[^{}]*\}|\^\s*\([^()]*\)|\^\s*(?:[+\-−]?\d+|[A-Za-z]))/g, (m) => raise(m));
+
+function prettifyAll(text: string): string {
+  const parts = text.split("`");
+  // An odd number of backticks means one is stray: no part can be trusted to be an equation.
+  if (parts.length % 2 === 0) return prettifyLoose(text);
+  return parts.map((part, i) => (i % 2 === 1 ? prettifyEquation(part) : prettifyLoose(part))).join("`");
 }
 
 /**
@@ -70,7 +119,7 @@ export function normalizeMathText(text: string): string {
       .map((part, i) => (i % 2 === 0 ? latexToPlain(part, false) : part))
       .join("`");
   }
-  return out;
+  return prettifyAll(out);
 }
 
 /** Splits text into plain and `equation` segments for rendering. */

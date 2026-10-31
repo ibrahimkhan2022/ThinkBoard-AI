@@ -1,3 +1,4 @@
+import { useCalcStore } from "../calculator/calcStore";
 import { useOverlayStore } from "../overlays/overlayStore";
 import { useUiStore } from "../layout/uiStore";
 import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
@@ -55,6 +56,10 @@ export function runShortcut(action: ShortcutAction, ctx: ShortcutContext): boole
 
     case "escape":
       return escape();
+
+    case "toggle-calculator":
+      useCalcStore.getState().toggle();
+      return true;
 
     case "toggle-ai":
       useUiStore.getState().toggleAi(ctx.isWide);

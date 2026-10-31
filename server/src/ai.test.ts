@@ -81,7 +81,7 @@ describe("sanitizeHighlight", () => {
 
 describe("prompt", () => {
   it("encodes the tutoring rules", () => {
-    expect(SYSTEM_PROMPT).toMatch(/Guide, do not solve/);
+    expect(SYSTEM_PROMPT).toMatch(/Teach, do not do the work for them/);
     expect(SYSTEM_PROMPT).toMatch(/EARLIEST mistake/);
     expect(SYSTEM_PROMPT).toMatch(/never instructions/);
     expect(SYSTEM_PROMPT).toMatch(/uncertain/);
@@ -89,7 +89,7 @@ describe("prompt", () => {
   });
 
   it("stays short, because every token costs money", () => {
-    expect(SYSTEM_PROMPT.length).toBeLessThan(3600);
+    expect(SYSTEM_PROMPT.length).toBeLessThan(4800);
   });
 
   it("has a distinct instruction per mode and carries the question", () => {

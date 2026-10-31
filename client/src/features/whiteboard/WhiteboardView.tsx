@@ -5,6 +5,7 @@ import { WIDE_BREAKPOINT } from "../layout/uiStore";
 import { ToolRail } from "./ToolRail";
 import { useOutsideClose } from "./useOutsideClose";
 import WhiteboardLoader from "./WhiteboardLoader";
+import { CalculatorPanel } from "../calculator/CalculatorPanel";
 import { TextToolbar } from "./TextToolbar";
 import { ZoomControls } from "./ZoomControls";
 
@@ -19,6 +20,7 @@ export function WhiteboardView() {
       <ZoomControls compact={compact} />
       <AnnotationChip />
       <TextToolbar />
+      <CalculatorPanel />
       <ToolRail dock={compact} />
       <ToastHost />
     </View>

@@ -1,7 +1,8 @@
 import { Group, Rect, RoundedRect, Text, type SkTypeface } from "@shopify/react-native-skia";
 import { useEffect, useMemo, useState } from "react";
 import { colors } from "../../lib/theme";
-import { caretRect, selectionRects, type Flow } from "./logic/textFlow";
+import { caretRect, scriptCaret, selectionRects, type Flow } from "./logic/textFlow";
+import { inheritedAttrs } from "./logic/textRuns";
 import { flowOf } from "./logic/textMetrics";
 import { segmentFont, useFontVersion } from "./skiaFont";
 import type { TextObject } from "./types";
@@ -65,6 +66,9 @@ export function TextDraftView({ draft, typeface, scale, chrome = true }: { draft
   const end = Math.max(anchor, focus);
   const selection = selectionRects(flow, start, end, draft.fontSize * 0.3);
   const caret = caretRect(flow, focus);
+  // What the next typed character will be: a pending Superscript/Subscript choice, else the character before the caret.
+  const typing = start === end ? (draft.pending ?? inheritedAttrs(draft.spans, focus, focus)) : {};
+  const bar = scriptCaret(caret, draft.fontSize, typing.script);
   const pad = 4 / scale;
   const boxWidth = Math.max(flow.width, draft.fontSize * 4);
 
@@ -86,7 +90,7 @@ export function TextDraftView({ draft, typeface, scale, chrome = true }: { draft
       ))}
       <Runs flow={flow} x={draft.x} y={draft.y} color={draft.color} />
       {chrome && caretOn && start === end && (
-        <Rect x={draft.x + caret.x - 0.75 / scale} y={draft.y + caret.y + caret.height * 0.1} width={1.5 / scale} height={caret.height * 0.8} color={draft.color} />
+        <Rect x={draft.x + caret.x - 0.75 / scale} y={draft.y + bar.y} width={1.5 / scale} height={bar.height} color={draft.color} />
       )}
     </Group>
   );

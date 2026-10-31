@@ -305,3 +305,22 @@ export function paragraphRangeAt(text: string, index: number): [number, number] 
   const after = text.indexOf("\n", at);
   return [before + 1, after < 0 ? text.length : after];
 }
+
+/**
+ * The caret for text typed as a superscript or subscript: shrunk like the glyphs and moved with them, so the
+ * caret itself shows which way the next character will go. `caret` is the plain-text caret from `caretRect`.
+ */
+export function scriptCaret(
+  caret: { y: number; height: number },
+  fontSize: number,
+  script: TextScript | undefined,
+): { y: number; height: number } {
+  const top = caret.y + caret.height * 0.1;
+  const bottom = top + caret.height * 0.8;
+  if (!script) return { y: top, height: bottom - top };
+  const baseline = caret.y + fontSize * BASELINE_RATIO;
+  const shift = script === "sup" ? -fontSize * SUP_RISE : fontSize * SUB_DROP;
+  const newTop = baseline + shift - (baseline - top) * SCRIPT_SCALE;
+  const newBottom = baseline + shift + (bottom - baseline) * SCRIPT_SCALE;
+  return { y: newTop, height: newBottom - newTop };
+}

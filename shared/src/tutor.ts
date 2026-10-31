@@ -49,6 +49,19 @@ export const TutorResponseSchema = z.object({
   needsInput: z.boolean().optional(),
   /** The question was not about studying; nothing was answered. */
   offTopic: z.boolean().optional(),
+  /** Calculations in the student's lines that the app re-did itself with the calculator (not the model's opinion). */
+  arithmetic: z
+    .array(
+      z.object({
+        line: z.number().int().positive(),
+        ok: z.boolean(),
+        expression: z.string().max(200),
+        computed: z.string().max(60),
+        claimed: z.string().max(60).optional(),
+      }),
+    )
+    .max(40)
+    .optional(),
   revealAnswer: z.boolean(),
 });
 export type TutorResponse = z.infer<typeof TutorResponseSchema>;

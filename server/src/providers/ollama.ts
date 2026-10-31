@@ -90,7 +90,7 @@ export class OllamaProvider implements AIProvider {
         eval_count?: number;
       };
       report?.({ inputTokens: json.prompt_eval_count ?? 0, outputTokens: json.eval_count ?? 0, estimatedCostUsd: 0 });
-      return parseModelResponse(json.message?.content ?? "");
+      return parseModelResponse(json.message?.content ?? "", request);
     } catch (err) {
       if (err instanceof ProviderError || (err instanceof Error && err.name === "ProviderOutputError")) throw err;
       if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {

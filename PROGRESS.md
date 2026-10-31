@@ -321,5 +321,54 @@ With the model's default "thinking" on, the first check took **~120 s** (near th
 - A text box is limited to 5000 characters.
 - The symbol keyboard docks at the bottom of the canvas when there is no room beside the toolbar, which covers the bottom tool rail on small screens until it is closed.
 
+## Chat maths, answers on request, script caret, scientific calculator (built 2026-10-31; free; no paid call made)
+
+### Built
+- **Chat shows maths as written.** `^`, `*`, `pi`, `<=`, `sqrt(`, `x_1` become real symbols (`a = 4 × π² × r × f²`) inside equations, in `shared/src/mathText.ts` (so server and client agree). A power or product the model forgot to put in backticks is tidied too. A power too long for a superscript (`^(a+b)`) is left as typed.
+- **Answers when you ask for them.** Plain requests such as "what answer would I get", "just tell me", "give me the solution", "solve it for me" are detected on the server (`wantsAnswer`). Only then is the model told to state the result, `revealAnswer` can be true, and the card shows an **Answer** badge; guiding hint/next step are dropped from a revealed answer. Every other request is still guided with hints first, and Check my work still never gives the corrected line.
+- **Caret size in super/subscript.** The text caret shrinks to the glyph size and moves up (superscript) or down (subscript) while that style is on, including when it is only switched on and nothing is typed yet.
+- **Scientific calculator** (`client/src/features/calculator`): a floating panel (drag it by its title; a bottom sheet on small screens). Open it with the top-bar button or the **C** key.
+  - Expression display with a caret you can move (◀ ▶ or tap a token), live answer while typing, history list (tap to reuse), Ans, memory (M+ M− MR MC) with an M indicator, DEG/RAD/GRAD, 2nd and hyp modes.
+  - Functions: + − × ÷, brackets, xʸ, x² x³ x⁻¹, √ ∛ ˣ√, |x|, n!, nPr, nCr, %, EXP (×10ⁿ), π, e, Ran#, ln, log, eˣ, 10ˣ, sin cos tan, their inverses, and the hyperbolic ones (and inverses).
+  - Parsed by our own expression parser (no `eval`): −2² = −4, 2^−3, right-associative powers, implied multiplication (2π, 3(4+1)) binding tighter than ÷, missing closing brackets closed for you, clean values at special angles (sin 30° = 0.5, tan 90° is an error), clear messages for division by zero, syntax and domain errors.
+  - Answers show up to 10 digits, scientific notation when very large or small, optional fraction view (0.25 ⇄ 1/4). **Copy** and **To board** (adds "sin(30)² = 0.25" to the board as text).
+  - Keyboard when the calculator has focus: digits, + - * / ^ ( ) % ! . Enter, Backspace, Delete (AC), arrows, Escape (close); the board's shortcuts never see these keys.
+
+### Verified
+- `npm run typecheck` clean; tests: shared 22, server 191, client 395, all passing with no network (new: ASCII-maths display, answer-request detection and gating, revealed answer standing alone, script caret geometry, 22 calculator-engine and 22 calculator-store tests).
+- In the browser (real key presses and clicks): opening with C, typing 2+3*4 shows the live answer 14 and Enter commits it; sin(30)² = 0.25; Ans carries on; History fills; To board put "sin(30)² = 0.25" on the board; the caret was small and high with superscript on and small and low with subscript on; asking "just give me the answer" returned an **Answer** card written as `4 × π² × 6 × 3²` with no ^.
+
+### Not verified / known limits
+- **The local model's arithmetic is unreliable.** For r = 6, f = 3 it gave 678.58 where the correct value is 2131.83. Nothing re-checks a revealed answer, so the card still says "not checked by a maths solver"; use the calculator to confirm. Making the server recompute simple arithmetic claims is a possible follow-up.
+- The calculator panel was exercised in the narrow (sheet) layout and measured in the wide layout; dragging it was not exercised. No graphing, equation solving, matrices or unit conversion, and history is not saved with the board.
+- `^` typed into a text box on the board is not converted (only chat text is).
+
+## Check my work: say what is wrong, check units, let a calculator judge the arithmetic (built 2026-10-31; free; no paid call made)
+
+### The problem (found from a real card)
+A student used r = 6 where the formula needed 0.06 m (r was in cm). Check my work answered "Mistake found, line 3 ... try calculating again": it missed the unit mistake, blamed a calculation that was right, and gave no reason. With correct work it sometimes still said "Mistake found". Causes: the prompt told the model to answer only with a guiding question (never to say what was wrong) and never mentioned units; and a small local model is unreliable at arithmetic, which it was asked to judge.
+
+### Changes
+- **Prompt (server/src/ai/prompt.ts).** Checking work now says exactly what is wrong, why and what it should be ("r = 6 cm must be 0.06 m because the formula uses metres"); never just "check again"; every value is compared with the unit the formula needs; never invent a mistake (recompute, and if it matches the student's line the line is correct). It does not give the final answer unless asked.
+- **Line transcription.** The model also copies each numbered line as it reads it (`lines`). The server re-does the arithmetic of those lines with the calculator engine (now in `shared/src/calculator.ts`, shared with the client): an `=` chain inside a line, or a result on the line below its calculation about the same variable (`shared/src/mathLines.ts`). Only plain numbers and operators are judged; anything with a variable, a word or a unit it cannot be sure of (such as a bare `m`) is left alone. A result counts as right if it is the exact value rounded or cut off at the digits written.
+- **The calculator overrules the model on arithmetic (server/src/ai/reconcile.ts).**
+  - A wrong result is reported as the mistake, naming the line, the calculation and what it really works out to, unless the model already named an earlier line.
+  - "Mistake found" about the calculation on a line that checks out is withdrawn: if the model took its own complaint back in the same message it becomes "correct"; otherwise "not sure" with a pointer to the numbers and units put in.
+  - A complaint that names a different input (a unit to convert, "should be 0.06") is left as a mistake, since the calculator cannot judge that.
+- The card says what the calculator re-checked ("arithmetic on line 3 re-checked with a calculator, the rest not checked by a maths solver").
+
+### Verified
+- `npm run typecheck` clean; tests: shared 36, server 206, client 395 (new: transcribed-line verification, the reconcile rules with messages taken from real model output, prompt content).
+- Against the local `gemma4:12b` with the board text (not the image) for your example: wrong units, 3 of 3 runs name line 2 and the unit ("you must convert 6 cm to 0.06 m"); in the browser through the real app the card showed that too, with the calculator note. Correct work (r = 0.06, result 21.32), 6 runs: 4 no longer say "Mistake found" (the calculator's re-check turns them into "not sure"/"correct"), 2 still did.
+
+### Not verified / known limits
+- **Still not reliable on correct work.** In about a third of my small sample the model invented a non-arithmetic mistake (for example "you forgot to square the frequency" when 3² is written), which the calculator cannot disprove. Runs were text-only (the board contents given as text), not real handwriting images; reading handwriting is a separate source of error, and a misread number can make the calculator report a wrong result that is really a misreading (the message says "as I read line N").
+- The calculator can only judge arithmetic. Whether the right numbers and units were used is still the model's judgement, and the card says so.
+- Withdrawn arithmetic complaints show as "not sure" rather than "Looks correct", because the units were not verified.
+- The answer-on-request path (`just tell me`) is not re-checked by the calculator.
+
+## Subscripts in the tutor's explanations (2026-10-31)
+`v_0`, `E_k`, `v_max`, `x_{n+1}` now show as v₀, Eₖ, vₘₐₓ, xₙ₊₁ in chat, inside equations and in plain sentences (a lone letter followed by a short subscript, so snake_case words are untouched). Subscript letters were extended to h k l m n p s t j r u v. A subscript with a letter that has no Unicode form (for example the "eq" in T_{eq}) is drawn as real smaller, lowered text instead of an underscore. Verified in the browser with the local model (v₀, Eₖ and a lowered "eq"); `shared` 40 tests, client 395, server 206 pass. Limits: the lowered text uses CSS `vertical-align`, so on the phone/tablet builds it is a smaller baseline-aligned subscript that was not run there.
+
 ## Later
 - Phase 5: session save/restore, polish, deployment, demo script.

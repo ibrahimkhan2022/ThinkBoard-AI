@@ -42,3 +42,6 @@ export { default as Sigma } from "lucide-react-native/icons/sigma";
 export { default as Search } from "lucide-react-native/icons/search";
 export { default as X } from "lucide-react-native/icons/x";
 export { default as ChevronDown } from "lucide-react-native/icons/chevron-down";
+export { default as Calculator } from "lucide-react-native/icons/calculator";
+export { default as Copy } from "lucide-react-native/icons/copy";
+export { default as SquarePlus } from "lucide-react-native/icons/square-plus";

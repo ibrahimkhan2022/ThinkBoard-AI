@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { Download, Sparkles, Trash } from "../../components/icons";
+import { Calculator, Download, Sparkles, Trash } from "../../components/icons";
 import { IconButton } from "../../components/IconButton";
 import { colors, radius } from "../../lib/theme";
+import { useCalcStore } from "../calculator/calcStore";
 import { useToastStore } from "../feedback/toastStore";
 import { useUiStore, WIDE_BREAKPOINT } from "../layout/uiStore";
 import { shortcutLabel } from "../shortcuts/shortcuts";
@@ -18,6 +19,7 @@ export function BoardActions() {
   const showLabel = width >= 520; // icon-only Export keeps the row inside small screens
   const aiOpen = useUiStore((s) => (isWide ? s.aiPanelOpen : s.drawerOpen));
   const toggleAi = useUiStore((s) => s.toggleAi);
+  const calculatorOpen = useCalcStore((s) => s.open);
   const hasObjects = useWhiteboardStore((s) => s.objects.length > 0);
   const [busy, setBusy] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
@@ -43,6 +45,14 @@ export function BoardActions() {
         shortcut={shortcutLabel("J", { mod: true })}
         active={aiOpen}
         onPress={() => toggleAi(isWide)}
+        size={36}
+      />
+      <IconButton
+        icon={Calculator}
+        label={calculatorOpen ? "Hide calculator" : "Show calculator"}
+        shortcut={shortcutLabel("C")}
+        active={calculatorOpen}
+        onPress={() => useCalcStore.getState().toggle()}
         size={36}
       />
       <BackgroundMenu />

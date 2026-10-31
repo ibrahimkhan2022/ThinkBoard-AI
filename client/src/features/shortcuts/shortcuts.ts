@@ -12,6 +12,7 @@ export type ShortcutAction =
   | "delete"
   | "escape"
   | "toggle-ai"
+  | "toggle-calculator"
   | "zoom-in"
   | "zoom-out"
   | "zoom-reset"
@@ -35,6 +36,7 @@ const TOOL_KEYS: Record<string, ShortcutAction> = {
   e: "tool-eraser",
   t: "tool-text",
   i: "tool-image",
+  c: "toggle-calculator",
 };
 
 /**

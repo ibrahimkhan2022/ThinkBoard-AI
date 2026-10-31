@@ -126,7 +126,7 @@ export class MetaProvider implements AIProvider {
     gate.settle(reservation, actualUsd);
     if (usage) report?.({ ...usage, estimatedCostUsd: round(actualUsd ?? 0) });
 
-    return parseModelResponse(messageText(json));
+    return parseModelResponse(messageText(json), request);
   }
 }
 

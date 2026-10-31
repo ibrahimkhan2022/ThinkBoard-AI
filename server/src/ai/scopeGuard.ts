@@ -38,3 +38,24 @@ export function checkScope(question: string | undefined): ScopeVerdict {
   }
   return { allowed: true };
 }
+
+/**
+ * The student plainly asks for the answer or the result ("what answer would I get", "just tell me", "give me the
+ * solution"). Only then may the tutor state it; every other request is guided with hints first.
+ */
+const ASKS_FOR_ANSWER = new RegExp(
+  [
+    String.raw`\b(?:what|which)(?:'?s|\s+is|\s+would|\s+will|\s+do|\s+should)?\s+(?:the\s+|my\s+)?(?:final\s+)?(?:answer|result|solution)\b`,
+    String.raw`\b(?:what|how much)\s+(?:do|would|will|should|did)\s+(?:i|we|you)\s+(?:get|end up with|have)\b`,
+    String.raw`\b(?:give|show|tell|write)\s+(?:me\s+)?(?:the\s+|a\s+)?(?:final\s+|full\s+)?(?:answer|result|solution|working)\b`,
+    String.raw`\bjust\s+(?:tell|give|show)\b`,
+    String.raw`\b(?:solve|work|figure|calculate|compute)\s+(?:it|this|that|them)\s+(?:out\s+)?for\s+me\b`,
+    String.raw`\b(?:answer|result)\s+(?:please|pls)\b`,
+    String.raw`\bfinal answer\b`,
+  ].join("|"),
+  "i",
+);
+
+export function wantsAnswer(question: string | undefined): boolean {
+  return ASKS_FOR_ANSWER.test((question ?? "").trim());
+}

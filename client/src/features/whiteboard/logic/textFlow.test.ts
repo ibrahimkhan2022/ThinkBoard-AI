@@ -7,6 +7,7 @@ import {
   lineIndexAt,
   moveVertically,
   paragraphRangeAt,
+  scriptCaret,
   selectionRects,
   wordRangeAt,
   type Measurer,
@@ -214,5 +215,23 @@ describe("caret and selection geometry", () => {
     expect(wordRangeAt("x+y", 1)).toEqual([1, 2]);
     expect(paragraphRangeAt("one\ntwo\nthree", 5)).toEqual([4, 7]);
     expect(paragraphRangeAt("one", 1)).toEqual([0, 3]);
+  });
+});
+
+describe("the caret shows the script it will type", () => {
+  const caret = { y: 0, height: lineHeight(SIZE) };
+  const plain = scriptCaret(caret, SIZE, undefined);
+  const sup = scriptCaret(caret, SIZE, "sup");
+  const sub = scriptCaret(caret, SIZE, "sub");
+
+  it("is smaller for a superscript or subscript, in proportion to the glyphs", () => {
+    expect(sup.height).toBeCloseTo(plain.height * 0.7);
+    expect(sub.height).toBeCloseTo(plain.height * 0.7);
+  });
+
+  it("sits higher for a superscript and lower for a subscript", () => {
+    expect(sup.y).toBeLessThan(plain.y);
+    expect(sub.y + sub.height).toBeGreaterThan(plain.y + plain.height);
+    expect(sup.y + sup.height).toBeLessThan(sub.y + sub.height);
   });
 });
