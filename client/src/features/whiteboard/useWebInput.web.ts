@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from "react";
+import { openContextMenu } from "./contextMenuState";
 import { pointerModifiers, useHoverStore } from "./pointerState";
 import { isEditorUi } from "./editorFocus";
 import { effectiveTool, useWhiteboardStore } from "./whiteboardStore";
@@ -41,6 +42,14 @@ export function useWebInput(surface: RefObject<unknown>) {
       if (active && active !== document.body && !isEditorUi(active)) active.blur?.();
     };
 
+    // Right-click: the board's own menu. A text box being edited keeps the browser's menu (cut, paste, spelling), and so does the menu itself.
+    const onContextMenu = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      if (isEditorUi(target) || target?.closest?.("[data-overlay-root]")) return;
+      e.preventDefault();
+      openContextMenu(local(e));
+    };
+
     let middleDrag: { x: number; y: number } | null = null;
     const onPointerDown = (e: PointerEvent) => {
       pointerModifiers.shift = e.shiftKey;
@@ -64,6 +73,7 @@ export function useWebInput(surface: RefObject<unknown>) {
     const onLeave = () => useHoverStore.getState().leave();
 
     element.addEventListener("wheel", onWheel, { passive: false });
+    element.addEventListener("contextmenu", onContextMenu);
     element.addEventListener("pointerdown", onPointerDown, { capture: true });
     element.addEventListener("mousedown", onMouseDown, { capture: true });
     element.addEventListener("pointermove", onPointerMove);
@@ -72,6 +82,7 @@ export function useWebInput(surface: RefObject<unknown>) {
     window.addEventListener("pointercancel", endMiddleDrag);
     return () => {
       element.removeEventListener("wheel", onWheel);
+      element.removeEventListener("contextmenu", onContextMenu);
       element.removeEventListener("pointerdown", onPointerDown, { capture: true });
       element.removeEventListener("mousedown", onMouseDown, { capture: true });
       element.removeEventListener("pointermove", onPointerMove);

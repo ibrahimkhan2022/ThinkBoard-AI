@@ -1,6 +1,7 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { ArrowDown } from "../../components/icons";
 import { colors, mono, radius } from "../../lib/theme";
+import { EquationText } from "./RichText";
 
 /**
  * The suggested next step as equation lines in small boxes, with arrows
@@ -13,9 +14,7 @@ export function StepBox({ lines }: { lines: string[] }) {
         <View key={i} style={styles.item}>
           {i > 0 && <ArrowDown size={14} color={colors.accent} strokeWidth={2.25} />}
           <View style={styles.box}>
-            <Text style={styles.equation} selectable>
-              {line}
-            </Text>
+            <EquationText text={line} style={styles.equation} />
           </View>
         </View>
       ))}

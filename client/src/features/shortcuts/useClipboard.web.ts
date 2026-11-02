@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { useOverlayStore } from "../overlays/overlayStore";
+import { OBJECTS_MIME } from "../whiteboard/logic/clipboard";
 import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
 import { copySelection, copyViaKeyboard, cutSelection, pasteFrom, pasteViaKeyboard } from "./clipboardActions";
+import { addImageFiles, imageFilesFrom } from "./pastedImages";
 import { isMacPlatform, isTypingTarget } from "./shortcuts";
 
 /**
@@ -41,6 +43,13 @@ export function useClipboard() {
     const onPaste = (e: ClipboardEvent) => {
       settle("paste");
       if (isTypingTarget(e.target) || useOverlayStore.getState().modalDepth > 0 || !e.clipboardData) return;
+      // A picture from outside (a screenshot, a copied image): put it on the board. Objects copied here come first.
+      const pictures = e.clipboardData.getData(OBJECTS_MIME) ? [] : imageFilesFrom(e.clipboardData);
+      if (pictures.length > 0) {
+        e.preventDefault();
+        void addImageFiles(pictures);
+        return;
+      }
       // An empty or unreadable system clipboard (blocked, or nothing copied outside the app) falls back to what was copied here.
       if (pasteFrom(e.clipboardData) || pasteViaKeyboard()) e.preventDefault();
     };
@@ -48,6 +57,11 @@ export function useClipboard() {
       const mod = isMacPlatform() ? e.metaKey : e.ctrlKey;
       const key = e.key.toLowerCase();
       if (!mod || e.altKey || e.shiftKey || !["c", "x", "v"].includes(key)) return;
+      // Holding the keys down repeats the key press: once is enough, in the board and in a text box alike.
+      if (e.repeat) {
+        e.preventDefault();
+        return;
+      }
       if (isTypingTarget(e.target) || useOverlayStore.getState().modalDepth > 0 || useWhiteboardStore.getState().textDraft) return;
       if ((window.getSelection()?.toString() ?? "") !== "") return;
       const expected = key === "c" ? "copy" : key === "x" ? "cut" : "paste";
@@ -60,12 +74,28 @@ export function useClipboard() {
       }, 80);
     };
 
+    // Picture files dragged in from the desktop or another window.
+    const dragsFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    const onDragOver = (e: DragEvent) => {
+      if (dragsFiles(e) && useOverlayStore.getState().modalDepth === 0) e.preventDefault(); // allow the drop
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!e.dataTransfer || !dragsFiles(e) || useOverlayStore.getState().modalDepth > 0) return;
+      e.preventDefault(); // otherwise the browser opens the picture in this tab and the board is lost
+      const pictures = imageFilesFrom(e.dataTransfer);
+      if (pictures.length > 0) void addImageFiles(pictures);
+    };
+
     document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("dragover", onDragOver);
+    document.addEventListener("drop", onDrop);
     document.addEventListener("copy", onCopy);
     document.addEventListener("cut", onCut);
     document.addEventListener("paste", onPaste);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("dragover", onDragOver);
+      document.removeEventListener("drop", onDrop);
       document.removeEventListener("copy", onCopy);
       document.removeEventListener("cut", onCut);
       document.removeEventListener("paste", onPaste);

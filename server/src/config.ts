@@ -42,7 +42,10 @@ const EnvSchema = z.object({
 
   MOCK_DELAY_MS: z.coerce.number().int().nonnegative().default(500),
   PORT: z.coerce.number().int().positive().default(8787),
+  /** 127.0.0.1 keeps the server to this computer; 0.0.0.0 lets other devices on the same Wi-Fi (an iPad) reach it. */
   HOST: z.string().default("127.0.0.1"),
+  /** Also serve the built web app (client/dist, from `npm run build:web`) on this port. */
+  SERVE_WEB: BooleanFlag,
   /** Extra comma-separated browser origins; localhost is always allowed. */
   CORS_ORIGINS: z.string().default(""),
 });

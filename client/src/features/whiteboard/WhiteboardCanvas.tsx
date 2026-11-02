@@ -25,6 +25,7 @@ import { effectiveTool, useWhiteboardStore } from "./whiteboardStore";
 if (__DEV__ && Platform.OS === "web") {
   Object.assign(globalThis, {
     __whiteboard: useWhiteboardStore,
+    __tutor: useTutorStore,
     __prepareImage: prepareImage,
     // Lets the exporter be driven from the console to check what an export (and the AI image) will contain.
     __renderRegion: (...args: Parameters<typeof import("./export/renderRegion").renderRegion>) =>

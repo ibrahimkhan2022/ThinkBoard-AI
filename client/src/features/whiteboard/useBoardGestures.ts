@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { usePanGesture, usePinchGesture, useSimultaneousGestures } from "react-native-gesture-handler";
 import { createDoubleTapDetector } from "./logic/doubleTap";
 import { handleAt, HANDLE_RADIUS_PX, hitTest, rectContains, resizeFromCorner, textHandleAt, translateObject, type TextEdge } from "./logic/hitTest";
@@ -9,6 +9,12 @@ import type { Corner, ImageObject, Point, CanvasObject, TextObject } from "./typ
 import { draftBounds, effectiveTool, useWhiteboardStore } from "./whiteboardStore";
 
 const SELECT_TOLERANCE_PX = 6;
+/** Resting the pen this long (0.4 s) at the end of a line or circle redraws it perfectly... */
+const HOLD_MS = 400;
+/** ...as long as it drifts no further than this while resting (a hand is never perfectly still), in screen pixels. */
+const HOLD_DRIFT_PX = 5;
+/** Marks smaller than this (length of a line, width of a circle, in screen pixels) are left alone: dots, an "o", a dash. */
+const SNAP_MIN_PX = 40;
 /** Pointer travel (screen pixels) after which a press on text becomes a drag instead of a click. */
 const DRAG_THRESHOLD_PX = 4;
 
@@ -41,6 +47,22 @@ const screenOf = (world: Point): Point => {
  */
 export function useBoardGestures() {
   const interaction = useRef<Interaction>({ kind: "none" });
+  const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; anchor: Point }>({ timer: null, anchor: { x: 0, y: 0 } });
+
+  const clearHold = () => {
+    if (hold.current.timer) clearTimeout(hold.current.timer);
+    hold.current.timer = null;
+  };
+  /** Starts counting a rest from here; any real movement starts it again. */
+  const armHold = (screen: Point) => {
+    clearHold();
+    hold.current.anchor = screen;
+    hold.current.timer = setTimeout(() => {
+      hold.current.timer = null;
+      if (interaction.current.kind === "draw") store().snapStroke(SNAP_MIN_PX / store().viewport.scale);
+    }, HOLD_MS);
+  };
+  useEffect(() => clearHold, []);
 
   const onePointer = usePanGesture({
     runOnJS: true,
@@ -56,6 +78,7 @@ export function useBoardGestures() {
         store().commitTextEdit();
         store().beginStroke(world);
         interaction.current = { kind: "draw" };
+        if (store().shapeAssist) armHold(screen);
       } else if (tool === "text") {
         const press = store().pressTextTool(world);
         // "inside" is a press on the box being edited: the editor owns it (caret placement), the board ignores it.
@@ -79,7 +102,16 @@ export function useBoardGestures() {
       const current = interaction.current;
       switch (current.kind) {
         case "draw":
+          // The tool can change mid-press (a shortcut, or a second hand on the toolbar): drawing stops with the pen.
+          if (effectiveTool(store()) !== "pen") {
+            store().cancelStroke();
+            interaction.current = { kind: "none" };
+            break;
+          }
           store().extendStroke(world);
+          if (store().shapeAssist && !store().strokeSnapped && Math.hypot(e.x - hold.current.anchor.x, e.y - hold.current.anchor.y) > HOLD_DRIFT_PX) {
+            armHold({ x: e.x, y: e.y });
+          }
           break;
         case "erase":
           store().eraseAlong(current.last, world, store().eraserSize / store().viewport.scale);
@@ -118,10 +150,12 @@ export function useBoardGestures() {
         }
       }
     },
-    onFinalize: () => {
+    onFinalize: (e) => {
+      clearHold();
       const current = interaction.current;
       interaction.current = { kind: "none" };
-      if (current.kind === "draw") store().endStroke();
+      // A stroke the system cancelled (a second finger landed, a palm, an interrupted touch) is dropped, not kept as a stray line.
+      if (current.kind === "draw") (e.canceled ? store().cancelStroke : store().endStroke)();
       else if (current.kind === "pan") store().setPanning(false);
       else if (current.kind === "marquee") store().setMarquee(null);
       else if (current.kind === "text-press") {
@@ -194,14 +228,26 @@ export function useBoardGestures() {
     store().setSelection([...new Set([...marquee.base, ...hits])]);
   };
 
+  /** The first finger of a pinch or two-finger pan already started a press; it was never meant as a stroke or a drag. */
+  const abandonFirstFinger = () => {
+    clearHold();
+    const current = interaction.current;
+    if (current.kind === "draw") store().cancelStroke();
+    else if (current.kind === "erase" || current.kind === "move" || current.kind === "resize" || current.kind === "resize-text") store().endTransaction();
+    else if (current.kind === "marquee") store().setMarquee(null);
+    interaction.current = { kind: "none" };
+  };
+
   const twoFingerPan = usePanGesture({
     runOnJS: true,
     minPointers: 2,
+    onBegin: abandonFirstFinger,
     onUpdate: (e) => store().panBy(e.changeX, e.changeY),
   });
 
   const pinch = usePinchGesture({
     runOnJS: true,
+    onBegin: abandonFirstFinger,
     onUpdate: (e) => store().zoomAt({ x: e.focalX, y: e.focalY }, e.scaleChange),
   });
 

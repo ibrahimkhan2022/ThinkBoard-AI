@@ -14,6 +14,8 @@ export interface ToolPrefs {
   fontFamily: FontFamilyId;
   eraserSize: number;
   eraserMode: EraserMode;
+  /** Hold the pen still at the end of a line or circle and it is redrawn perfectly. */
+  shapeAssist: boolean;
   recentColors: string[];
 }
 
@@ -35,6 +37,7 @@ export function sanitizePrefs(raw: unknown): Partial<ToolPrefs> {
   const eraserSize = num(r.eraserSize, 4, 60);
   if (eraserSize !== undefined) prefs.eraserSize = Math.round(eraserSize);
   if (r.eraserMode === "object" || r.eraserMode === "segment") prefs.eraserMode = r.eraserMode;
+  if (typeof r.shapeAssist === "boolean") prefs.shapeAssist = r.shapeAssist;
   if (Array.isArray(r.recentColors)) {
     prefs.recentColors = r.recentColors
       .map((c) => (typeof c === "string" ? parseHexColor(c) : null))

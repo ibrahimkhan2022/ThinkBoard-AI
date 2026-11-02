@@ -39,3 +39,5 @@ export function useModalGuard(visible: boolean) {
 
 export const TOOL_SETTINGS_OVERLAY = "tool-settings";
 export const BACKGROUND_OVERLAY = "background-menu";
+
+export const CONTEXT_MENU_OVERLAY = "context-menu";

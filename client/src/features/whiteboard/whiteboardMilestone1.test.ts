@@ -108,6 +108,46 @@ describe("temporary tool (Space / middle mouse pan)", () => {
   });
 });
 
+describe("a stroke in progress belongs to the pen", () => {
+  const start = () => {
+    get().setTool("pen");
+    get().beginStroke({ x: 1, y: 1 });
+    get().extendStroke({ x: 40, y: 40 });
+    expect(get().activeStroke).not.toBeNull();
+  };
+
+  it("is thrown away when another tool is chosen, so it cannot be committed or keep growing", () => {
+    start();
+    get().setTool("select");
+    expect(get().activeStroke).toBeNull();
+    get().extendStroke({ x: 80, y: 80 });
+    get().endStroke();
+    expect(get().objects).toHaveLength(0);
+  });
+
+  it("is thrown away when Space turns the tool into the hand, but not by releasing it", () => {
+    start();
+    get().setTempTool("hand");
+    expect(get().activeStroke).toBeNull();
+    get().setTempTool(null);
+    expect(effectiveTool(get())).toBe("pen");
+  });
+
+  it("cancelStroke drops it without adding anything to the board or the undo history", () => {
+    start();
+    get().cancelStroke();
+    expect(get().activeStroke).toBeNull();
+    expect(get().objects).toHaveLength(0);
+    expect(get().history.past).toHaveLength(0);
+  });
+
+  it("a finished stroke is still committed normally", () => {
+    start();
+    get().endStroke();
+    expect(get().objects).toHaveLength(1);
+  });
+});
+
 describe("eraser modes", () => {
   const long = stroke("long", [[0, 0], [200, 0]], 2);
   const note: CanvasObject = { id: "t", kind: "text", text: "x", color: "#000", fontSize: 20, x: 300, y: 0, width: 40, height: 26 };
@@ -260,5 +300,56 @@ describe("saved tool preferences", () => {
     expect(sanitizePrefs(null)).toEqual({});
     expect(sanitizePrefs("string")).toEqual({});
     expect(sanitizePrefs({ penWidth: NaN })).toEqual({});
+  });
+});
+
+describe("shape assist (hold still to tidy a line or circle)", () => {
+  const drawLine = () => {
+    get().setTool("pen");
+    get().beginStroke({ x: 0, y: 0 });
+    for (let x = 10; x <= 300; x += 10) get().extendStroke({ x, y: x % 20 === 0 ? 1 : -1 });
+  };
+
+  it("is on by default and is remembered like the other pen settings", () => {
+    expect(get().shapeAssist).toBe(true);
+    expect(sanitizePrefs({ shapeAssist: false })).toEqual({ shapeAssist: false });
+    expect(sanitizePrefs({ shapeAssist: "no" })).toEqual({});
+  });
+
+  it("replaces the stroke being drawn with a perfect line, and the rest of the press cannot change it", () => {
+    drawLine();
+    expect(get().snapStroke(20)).toBe(true);
+    expect(get().strokeSnapped).toBe(true);
+    expect(get().activeStroke!.points).toHaveLength(2);
+    get().extendStroke({ x: 500, y: 400 });
+    expect(get().activeStroke!.points).toHaveLength(2);
+    get().endStroke();
+    expect(get().objects).toHaveLength(1);
+    expect((get().objects[0] as StrokeObject).points).toHaveLength(2);
+    expect(get().strokeSnapped).toBe(false);
+  });
+
+  it("does nothing when the assist is off, when it is not a line or circle, or when it is too small", () => {
+    drawLine();
+    get().setShapeAssist(false);
+    expect(get().snapStroke(20)).toBe(false);
+    expect(get().activeStroke!.points.length).toBeGreaterThan(10);
+
+    get().setShapeAssist(true);
+    expect(get().snapStroke(5000)).toBe(false); // longer than the line is
+    get().cancelStroke();
+    get().beginStroke({ x: 0, y: 0 });
+    for (let i = 1; i <= 30; i++) get().extendStroke({ x: i * 6, y: Math.sin(i / 3) * 40 });
+    expect(get().snapStroke(20)).toBe(false); // a wave
+  });
+
+  it("a new stroke starts fresh after one was tidied", () => {
+    drawLine();
+    get().snapStroke(20);
+    get().endStroke();
+    get().beginStroke({ x: 5, y: 5 });
+    get().extendStroke({ x: 50, y: 60 });
+    expect(get().strokeSnapped).toBe(false);
+    expect(get().activeStroke!.points).toHaveLength(2);
   });
 });

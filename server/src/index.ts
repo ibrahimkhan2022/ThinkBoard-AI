@@ -9,5 +9,6 @@ loadDotenv({ path: fileURLToPath(new URL("../../.env", import.meta.url)), quiet:
 const config = loadConfig();
 // Paid-usage counters live here so a restart cannot reset the daily and budget limits (git-ignored).
 const usageFile = fileURLToPath(new URL("../data/usage.json", import.meta.url));
-const app = await buildServer(config, { usageFile });
+const webRoot = config.SERVE_WEB ? fileURLToPath(new URL("../../client/dist", import.meta.url)).replace(/[\\/]$/, "") : undefined;
+const app = await buildServer(config, { usageFile, webRoot });
 await app.listen({ port: config.PORT, host: config.HOST });

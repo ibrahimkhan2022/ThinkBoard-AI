@@ -1,7 +1,7 @@
 import * as ImagePicker from "expo-image-picker";
 import { visibleWorldRect } from "../logic/viewport";
 import { useWhiteboardStore } from "../whiteboardStore";
-import { prepareImage } from "./prepareImage";
+import { prepareImage, type PreparedImage } from "./prepareImage";
 
 /** Fraction of the visible board a newly added image may occupy. */
 const INITIAL_FILL = 0.6;
@@ -15,7 +15,15 @@ export async function importImageToBoard(): Promise<boolean> {
   const asset = picked.canceled ? null : picked.assets[0];
   if (!asset) return false;
 
-  const image = await prepareImage(asset.uri, asset.width, asset.height);
+  placeImage(await prepareImage(asset.uri, asset.width, asset.height));
+  return true;
+}
+
+/**
+ * Puts a prepared picture on the board, centred in the part the user is looking at and small enough to fit it.
+ * `stagger` moves it down and right so several pictures added at once do not sit exactly on top of each other.
+ */
+export function placeImage(image: PreparedImage, stagger = 0): void {
   const { viewport, canvasSize } = useWhiteboardStore.getState();
   const view = visibleWorldRect(viewport, canvasSize);
 
@@ -26,8 +34,7 @@ export async function importImageToBoard(): Promise<boolean> {
     uri: image.uri,
     width,
     height,
-    x: view.x + (view.width - width) / 2,
-    y: view.y + (view.height - height) / 2,
+    x: view.x + (view.width - width) / 2 + stagger * 24,
+    y: view.y + (view.height - height) / 2 + stagger * 24,
   });
-  return true;
 }

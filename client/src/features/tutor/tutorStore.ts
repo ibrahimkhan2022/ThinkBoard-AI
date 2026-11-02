@@ -123,6 +123,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       question: text,
       region: ai?.region ?? fallbackRegion(board.viewport, board.canvasSize),
       ...(ai && ai.lines.length ? { labeledLines: ai.lines.length } : {}),
+      ...(ai ? { focus: ai.source } : {}),
       ...(history.length ? { history } : {}),
       mockScenario: get().server?.isMock ? get().mockScenario : undefined,
     };

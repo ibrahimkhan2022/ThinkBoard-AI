@@ -3,7 +3,7 @@ import { useOverlayStore } from "../overlays/overlayStore";
 import { WIDE_BREAKPOINT } from "../layout/uiStore";
 import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
 import { runShortcut, type ShortcutContext } from "./shortcutActions";
-import { isMacPlatform, isTypingTarget, resolveShortcut } from "./shortcuts";
+import { isMacPlatform, isTypingTarget, repeatsWhenHeld, resolveShortcut } from "./shortcuts";
 
 /**
  * The one global keyboard handler. Shortcuts stand down while the user is
@@ -32,7 +32,13 @@ export function useShortcuts(importImage: () => void) {
       }
 
       const action = resolveShortcut(e, isMac);
-      if (action && runShortcut(action, context())) e.preventDefault();
+      if (!action) return;
+      // Holding Ctrl+D must duplicate once, not pile up copies for as long as the key is down.
+      if (e.repeat && !repeatsWhenHeld(action)) {
+        e.preventDefault();
+        return;
+      }
+      if (runShortcut(action, context())) e.preventDefault();
     };
 
     const onKeyUp = (e: KeyboardEvent) => {

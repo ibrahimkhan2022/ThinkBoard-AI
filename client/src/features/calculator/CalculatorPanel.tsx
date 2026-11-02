@@ -287,10 +287,20 @@ export function CalculatorPanel() {
   const root = useRef<ComponentRef<typeof View>>(null);
   const [showHistory, setShowHistory] = useState(false);
   const historyCount = useCalcStore((s) => s.history.length);
-  const [offset, setOffset] = useState<{ x: number; y: number } | null>(null);
+  // Where the user dragged it to (the top-left corner, in board pixels); null until it has been moved.
+  const [moved, setMoved] = useState<{ left: number; top: number } | null>(null);
   const compact = canvas.width < COMPACT_BELOW;
   const width = compact ? Math.max(240, canvas.width - 16) : PANEL_WIDTH;
-  const dragStart = useRef({ x: 0, y: 0 });
+  const handle = useRef<ComponentRef<typeof View>>(null);
+
+  // Default: top-right of the board. The panel always stays fully reachable, wherever it was left and however the board is resized.
+  const clampLeft = (v: number) => Math.min(Math.max(8, v), Math.max(8, canvas.width - width - 8));
+  const clampTop = (v: number) => Math.min(Math.max(8, v), Math.max(8, canvas.height - 120));
+  const left = compact ? 8 : clampLeft(moved?.left ?? canvas.width - width - 16);
+  const top = compact ? undefined : clampTop(moved?.top ?? 64);
+  // The drag handlers are created once; this is how they see the current position and limits.
+  const live = useRef({ left, top: top ?? 64, clampLeft, clampTop });
+  live.current = { left, top: top ?? 64, clampLeft, clampTop };
 
   // Typing on the keyboard presses keys while the calculator has focus; the board's own shortcuts never see these keys.
   useEffect(() => {
@@ -317,25 +327,60 @@ export function CalculatorPanel() {
     return () => node.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
+  // Dragging by the title bar. On the web it uses pointer capture, so the pointer keeps moving the panel even when it
+  // leaves the bar, and the browser never starts selecting text; elsewhere it is an ordinary pan gesture.
+  useEffect(() => {
+    const node = handle.current as unknown as HTMLElement | null;
+    if (!open || compact || Platform.OS !== "web" || !node?.addEventListener) return;
+    let drag: { id: number; x: number; y: number; left: number; top: number } | null = null;
+    const down = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      node.setPointerCapture?.(e.pointerId);
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, left: live.current.left, top: live.current.top };
+    };
+    const move = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { clampLeft: l, clampTop: t } = live.current;
+      setMoved({ left: l(drag.left + e.clientX - drag.x), top: t(drag.top + e.clientY - drag.y) });
+    };
+    const end = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      node.releasePointerCapture?.(e.pointerId);
+      drag = null;
+    };
+    const noSelect = (e: Event) => e.preventDefault();
+    node.addEventListener("pointerdown", down);
+    node.addEventListener("pointermove", move);
+    node.addEventListener("pointerup", end);
+    node.addEventListener("pointercancel", end);
+    node.addEventListener("selectstart", noSelect);
+    node.addEventListener("dragstart", noSelect);
+    return () => {
+      node.removeEventListener("pointerdown", down);
+      node.removeEventListener("pointermove", move);
+      node.removeEventListener("pointerup", end);
+      node.removeEventListener("pointercancel", end);
+      node.removeEventListener("selectstart", noSelect);
+      node.removeEventListener("dragstart", noSelect);
+    };
+  }, [open, compact]);
+
+  const nativeStart = useRef({ left: 0, top: 0 });
   const mover = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => Platform.OS !== "web",
         onPanResponderGrant: () => {
-          dragStart.current = dragPosition.current;
+          nativeStart.current = { left: live.current.left, top: live.current.top };
         },
-        onPanResponderMove: (_e, g) => setOffset({ x: dragStart.current.x + g.dx, y: dragStart.current.y + g.dy }),
+        onPanResponderMove: (_e, g) =>
+          setMoved({ left: live.current.clampLeft(nativeStart.current.left + g.dx), top: live.current.clampTop(nativeStart.current.top + g.dy) }),
       }),
     [],
   );
 
   if (!open) return null;
-
-  // Default: top-right of the board; dragging stores a position relative to that.
-  const baseLeft = Math.max(8, canvas.width - width - 16);
-  const left = compact ? 8 : Math.min(Math.max(8, baseLeft + (offset?.x ?? 0)), Math.max(8, canvas.width - width - 8));
-  const top = compact ? undefined : Math.min(Math.max(8, 64 + (offset?.y ?? 0)), Math.max(8, canvas.height - 120));
-  dragPosition.current = { x: left - baseLeft, y: (top ?? 64) - 64 };
 
   return (
     <View
@@ -344,7 +389,7 @@ export function CalculatorPanel() {
       style={[styles.panel, { width, left, ...(compact ? { bottom: 8 } : { top }), maxHeight: Math.max(240, canvas.height - 16) }]}
     >
       <View style={styles.header}>
-        <View {...(compact ? {} : mover.panHandlers)} style={[styles.title, !compact && styles.draggable]}>
+        <View ref={handle} {...(compact ? {} : mover.panHandlers)} style={[styles.title, !compact && styles.draggable]}>
           <Calculator size={16} color={colors.accent} strokeWidth={2.25} />
           <Text style={styles.titleText}>Calculator</Text>
         </View>
@@ -365,9 +410,6 @@ export function CalculatorPanel() {
   );
 }
 
-/** Where the panel is while dragging (module-level so the pan responder, created once, can read it). */
-const dragPosition = { current: { x: 0, y: 0 } };
-
 const styles = StyleSheet.create({
   panel: {
     position: "absolute",
@@ -383,10 +425,12 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
     elevation: 12,
-  },
+    // Keys and labels are never text to select; a press that drifts across them must not highlight the panel.
+    userSelect: "none",
+  } as never,
   header: { flexDirection: "row", alignItems: "center", gap: 6 },
   title: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7, minHeight: 28 },
-  draggable: { cursor: "grab" } as never,
+  draggable: { cursor: "grab", userSelect: "none", touchAction: "none" } as never,
   titleText: { color: colors.text, fontSize: 14, fontWeight: "800" },
   historyButton: { paddingHorizontal: 10, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: colors.background },
   close: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 8 },

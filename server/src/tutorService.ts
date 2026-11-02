@@ -12,6 +12,14 @@ export { ProviderOutputError };
  */
 function fitToMode(response: TutorResponse, mode: TutorRequest["mode"]): TutorResponse {
   const showsSteps = mode === "start" || mode === "next_step";
+  if (showsSteps && !response.needsInput && !response.offTopic && !response.nextStep && !response.stepPreview?.length) {
+    // A reply that comments on the work but gives no step is not what was asked for; it is not shown as if it were.
+    return {
+      status: "uncertain",
+      message: "I couldn't work out a next step this time. Press Next step to try again, or ask for a Hint.",
+      revealAnswer: false,
+    };
+  }
   const { stepPreview: _steps, nextStep: _next, ...rest } = response;
   const preview = showsSteps ? response.stepPreview : undefined;
   const plain = (s: string) => s.replace(/[`\s]/g, "");

@@ -24,6 +24,7 @@ import {
   type TextSpan,
 } from "./logic/textRuns";
 import { FIT_PADDING_PX, fitViewport, INITIAL_VIEWPORT, nextZoomStop, panBy, screenToWorld, visibleWorldRect, zoomAt, zoomTo } from "./logic/viewport";
+import { recognizeShape } from "./logic/shapeSnap";
 import { loadToolPrefs, saveToolPrefs, type EraserMode } from "./toolPrefs";
 import type {
   Background,
@@ -146,6 +147,10 @@ interface WhiteboardState {
   /** Eraser radius in screen pixels. */
   eraserSize: number;
   eraserMode: EraserMode;
+  /** Holding the pen still at the end of a line or circle turns it into a perfect one. */
+  shapeAssist: boolean;
+  /** The stroke being drawn has been turned into a perfect shape; the rest of the press only finishes it. */
+  strokeSnapped: boolean;
   recentColors: string[];
 
   selectedIds: string[];
@@ -178,6 +183,11 @@ interface WhiteboardState {
   beginStroke: (point: Point) => void;
   extendStroke: (point: Point) => void;
   endStroke: () => void;
+  /** Replaces the stroke being drawn with the perfect line or circle it was meant to be. False when it is neither (or the assist is off). */
+  snapStroke: (minSize: number) => boolean;
+  setShapeAssist: (on: boolean) => void;
+  /** Drops the stroke being drawn without adding it to the board (a second finger landed, or the tool changed). */
+  cancelStroke: () => void;
 
   beginTextEditAt: (point: Point) => void;
   /**
@@ -387,6 +397,8 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
     fontFamily: savedPrefs.fontFamily ?? DEFAULT_FONT_FAMILY,
     eraserSize: savedPrefs.eraserSize ?? ERASER_SIZES[1],
     eraserMode: savedPrefs.eraserMode ?? "object",
+    shapeAssist: savedPrefs.shapeAssist ?? true,
+    strokeSnapped: false,
     recentColors: savedPrefs.recentColors ?? [],
 
     selectedIds: [],
@@ -418,10 +430,12 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
 
     setTool: (tool) => {
       get().commitTextEdit();
-      set((s) => ({ tool, tempTool: null, selectedIds: tool === "select" ? s.selectedIds : [], marquee: null }));
+      // A stroke still being drawn belongs to the pen: changing tool throws it away rather than letting it keep growing.
+      set((s) => ({ tool, tempTool: null, selectedIds: tool === "select" ? s.selectedIds : [], marquee: null, activeStroke: null, strokeSnapped: false }));
     },
-    setTempTool: (tempTool) => set({ tempTool }),
+    setTempTool: (tempTool) => set((s) => (tempTool && tempTool !== "pen" ? { tempTool, activeStroke: null, strokeSnapped: false } : { tempTool })),
     setEraserMode: (eraserMode) => set({ eraserMode }),
+    setShapeAssist: (shapeAssist) => set({ shapeAssist }),
     setPanning: (panning) => set({ panning }),
 
     setSelection: (ids) => set({ selectedIds: ids }),
@@ -479,12 +493,13 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
       const { penColor, penWidth } = get();
       set({
         activeStroke: { id: createId(), kind: "stroke", points: [point], color: penColor, width: penWidth },
+        strokeSnapped: false,
       });
     },
 
     extendStroke: (point) => {
       const stroke = get().activeStroke;
-      if (!stroke) return;
+      if (!stroke || get().strokeSnapped) return;
       const last = stroke.points[stroke.points.length - 1];
       if (Math.hypot(point.x - last.x, point.y - last.y) < MIN_POINT_DISTANCE) return;
       set({ activeStroke: { ...stroke, points: [...stroke.points, point] } });
@@ -493,8 +508,21 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
     endStroke: () => {
       const stroke = get().activeStroke;
       if (!stroke) return;
-      set({ activeStroke: null });
+      set({ activeStroke: null, strokeSnapped: false });
       commitObjects([...get().objects, stroke]);
+    },
+
+    snapStroke: (minSize) => {
+      const { activeStroke, strokeSnapped, shapeAssist } = get();
+      if (!activeStroke || strokeSnapped || !shapeAssist) return false;
+      const shape = recognizeShape(activeStroke.points, { minSize });
+      if (!shape) return false;
+      set({ activeStroke: { ...activeStroke, points: shape.points }, strokeSnapped: true });
+      return true;
+    },
+
+    cancelStroke: () => {
+      if (get().activeStroke) set({ activeStroke: null, strokeSnapped: false });
     },
 
     beginTextEditAt: (point) => {
@@ -975,6 +1003,7 @@ useWhiteboardStore.subscribe((s, prev) => {
     s.fontFamily === prev.fontFamily &&
     s.eraserSize === prev.eraserSize &&
     s.eraserMode === prev.eraserMode &&
+    s.shapeAssist === prev.shapeAssist &&
     s.recentColors === prev.recentColors
   ) {
     return;
@@ -986,6 +1015,7 @@ useWhiteboardStore.subscribe((s, prev) => {
     fontFamily: s.fontFamily,
     eraserSize: s.eraserSize,
     eraserMode: s.eraserMode,
+    shapeAssist: s.shapeAssist,
     recentColors: s.recentColors,
   });
 });

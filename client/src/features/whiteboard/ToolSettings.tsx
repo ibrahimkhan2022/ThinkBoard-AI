@@ -51,6 +51,31 @@ function EraserModeToggle() {
   );
 }
 
+/** Pen only: hold the pen still at the end of a line or circle and it is redrawn perfectly. */
+function ShapeAssistToggle() {
+  const on = useWhiteboardStore((s) => s.shapeAssist);
+  const setOn = useWhiteboardStore((s) => s.setShapeAssist);
+  return (
+    <View style={styles.modeBlock}>
+      <Pressable
+        accessibilityRole="switch"
+        accessibilityLabel="Shape assist"
+        accessibilityState={{ checked: on }}
+        onPress={() => setOn(!on)}
+        style={styles.switchRow}
+      >
+        <Text style={styles.switchLabel}>Perfect shapes</Text>
+        <View style={[styles.track, on && styles.trackOn]}>
+          <View style={[styles.knob, on && styles.knobOn]} />
+        </View>
+      </Pressable>
+      <Text style={styles.help}>
+        {on ? "Hold the pen still for a moment (0.4 s) at the end of a line or circle and it is redrawn perfectly." : "Lines and circles stay exactly as you draw them."}
+      </Text>
+    </View>
+  );
+}
+
 function SelectSettings() {
   const hasStyleable = useWhiteboardStore((s) =>
     s.objects.some((o) => s.selectedIds.includes(o.id) && o.kind !== "image"),
@@ -75,6 +100,7 @@ export function ToolSettings({ tool }: { tool: Tool }) {
           <StrokePreview />
           <ColorPanel />
           <SizePanel />
+          <ShapeAssistToggle />
         </Popover>
       );
     case "eraser":
@@ -110,5 +136,11 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: colors.surface },
   segmentText: { color: colors.muted, fontSize: 13, fontWeight: "600" },
   segmentTextActive: { color: colors.accent },
+  switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4 },
+  switchLabel: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  track: { width: 38, height: 22, borderRadius: 11, padding: 2, backgroundColor: colors.border },
+  trackOn: { backgroundColor: colors.accent },
+  knob: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.surface },
+  knobOn: { marginLeft: 16 },
   help: { color: colors.muted, fontSize: 12, lineHeight: 17 },
 });

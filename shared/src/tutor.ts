@@ -94,6 +94,8 @@ export const TutorRequestSchema = z
     /** Base64 image of `region` (what the model sees). Omitted when there is nothing to show. */
     imageBase64: z.string().max(7_000_000).optional(),
     imageMimeType: z.enum(["image/png", "image/jpeg"]).optional(),
+    /** What the image shows: the part the student selected, their recent work, or what was on their screen. */
+    focus: z.enum(["selection", "recent", "view"]).optional(),
     /** Number of lines of work labelled 1..N (blue circles in the left margin) in the image. */
     labeledLines: z.number().int().min(0).max(40).optional(),
     /** The last few turns of this conversation, oldest first. */

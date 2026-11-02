@@ -48,6 +48,8 @@ export function resolveShortcut(e: KeyInfo, isMac: boolean): ShortcutAction | nu
   const mod = isMac ? e.metaKey : e.ctrlKey;
   const otherMod = isMac ? e.ctrlKey : e.metaKey;
   const key = e.key.toLowerCase();
+  // Undo and redo answer to either key: on an iPad or a Mac keyboard people reach for Ctrl+Z as often as Cmd+Z.
+  if (key === "z" && (e.ctrlKey || e.metaKey) && !e.altKey) return e.shiftKey ? "redo" : "undo";
   if (e.altKey || otherMod) return null;
 
   if (mod) {
@@ -82,6 +84,10 @@ export function resolveShortcut(e: KeyInfo, isMac: boolean): ShortcutAction | nu
   if (e.shiftKey) return null;
   return TOOL_KEYS[key] ?? null;
 }
+
+/** Actions that keep going while their key is held down (undo several steps, zoom smoothly). Everything else happens once per press. */
+const REPEATS_WHEN_HELD: ShortcutAction[] = ["undo", "redo", "zoom-in", "zoom-out", "delete"];
+export const repeatsWhenHeld = (action: ShortcutAction) => REPEATS_WHEN_HELD.includes(action);
 
 export const isMacPlatform = () =>
   typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || "");

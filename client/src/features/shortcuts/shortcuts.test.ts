@@ -4,7 +4,16 @@ import { useUiStore } from "../layout/uiStore";
 import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
 import type { StrokeObject } from "../whiteboard/types";
 import { runShortcut, type ShortcutContext } from "./shortcutActions";
-import { isTypingTarget, resolveShortcut, shortcutLabel, type KeyInfo } from "./shortcuts";
+import { isTypingTarget, repeatsWhenHeld, resolveShortcut, shortcutLabel, type KeyInfo } from "./shortcuts";
+
+describe("holding a shortcut down", () => {
+  it("repeats only undo, redo, zoom and delete; everything else happens once per press", () => {
+    for (const action of ["undo", "redo", "zoom-in", "zoom-out", "delete"] as const) expect(repeatsWhenHeld(action)).toBe(true);
+    for (const action of ["duplicate", "select-all", "toggle-ai", "toggle-calculator", "tool-pen", "zoom-reset", "fit-content", "escape"] as const) {
+      expect(repeatsWhenHeld(action)).toBe(false);
+    }
+  });
+});
 
 const key = (k: string, mods: Partial<KeyInfo> = {}): KeyInfo => ({
   key: k,
@@ -36,9 +45,12 @@ describe("resolveShortcut", () => {
 
   it("uses Ctrl on Windows/Linux and Cmd on macOS, never the wrong one", () => {
     expect(resolveShortcut(key("z", { ctrlKey: true }), false)).toBe("undo");
-    expect(resolveShortcut(key("z", { metaKey: true }), false)).toBeNull();
     expect(resolveShortcut(key("z", { metaKey: true }), true)).toBe("undo");
-    expect(resolveShortcut(key("z", { ctrlKey: true }), true)).toBeNull();
+    // Either key undoes, whatever the platform.
+    expect(resolveShortcut(key("z", { ctrlKey: true }), true)).toBe("undo");
+    expect(resolveShortcut(key("z", { metaKey: true }), false)).toBe("undo");
+    expect(resolveShortcut(key("Z", { metaKey: true, shiftKey: true }), false)).toBe("redo");
+    expect(resolveShortcut(key("z", { ctrlKey: true, altKey: true }), false)).toBeNull();
   });
 
   it("redo: Shift+Mod+Z everywhere, Ctrl+Y only off macOS", () => {

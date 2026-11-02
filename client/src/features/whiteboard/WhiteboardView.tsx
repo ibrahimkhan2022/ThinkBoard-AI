@@ -2,6 +2,7 @@ import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { ToastHost } from "../feedback/ToastHost";
 import { AnnotationChip } from "../annotations/AnnotationChip";
 import { WIDE_BREAKPOINT } from "../layout/uiStore";
+import { ContextMenu } from "./ContextMenu";
 import { ToolRail } from "./ToolRail";
 import { useOutsideClose } from "./useOutsideClose";
 import WhiteboardLoader from "./WhiteboardLoader";
@@ -22,6 +23,7 @@ export function WhiteboardView() {
       <TextToolbar />
       <CalculatorPanel />
       <ToolRail dock={compact} />
+      <ContextMenu />
       <ToastHost />
     </View>
   );

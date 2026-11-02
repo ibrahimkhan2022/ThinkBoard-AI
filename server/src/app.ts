@@ -5,6 +5,7 @@ import { BudgetError } from "./budget";
 import type { AppConfig } from "./config";
 import { ProviderError } from "./providers/errors";
 import { selectProvider, type ProviderSelection, type SelectOptions } from "./providers";
+import { serveWebApp } from "./staticSite";
 import { createTutorService, ProviderOutputError, type TutorService } from "./tutorService";
 
 const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -13,6 +14,8 @@ export interface BuildOptions extends SelectOptions {
   /** Replace the whole provider layer (tests). */
   service?: TutorService;
   selection?: ProviderSelection;
+  /** Folder of the built web app to serve beside the API (defaults to none). */
+  webRoot?: string;
 }
 
 export async function buildServer(config: AppConfig, options: BuildOptions = {}) {
@@ -70,6 +73,8 @@ export async function buildServer(config: AppConfig, options: BuildOptions = {})
       return reply.code(500).send({ error: "provider_error", message: "The AI provider failed." });
     }
   });
+
+  if (options.webRoot) serveWebApp(app, options.webRoot);
 
   return app;
 }

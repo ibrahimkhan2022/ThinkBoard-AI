@@ -3,6 +3,16 @@ import { buildUserText, parseModelResponse, SYSTEM_PROMPT } from "../ai/prompt";
 import { ProviderError } from "./errors";
 import type { AIProvider } from "./types";
 
+const NEXT_STEP_REMINDER =
+  '\nYour previous reply gave no step. Reply again with the JSON object, and this time fill both "nextStep" (one sentence) and "stepPreview" (the resulting equation line). Do not comment on mistakes.';
+
+/** "Next step" and "how to start" must come back with a step; true when the reply has neither a nextStep nor a preview. */
+export function lacksRequestedStep(request: Pick<TutorRequest, "mode">, response: TutorResponse): boolean {
+  if (request.mode !== "next_step" && request.mode !== "start") return false;
+  if (response.needsInput || response.offTopic) return false;
+  return !response.nextStep && !(response.stepPreview && response.stepPreview.length > 0);
+}
+
 export interface OllamaOptions {
   baseUrl: string;
   model: string;
@@ -65,32 +75,13 @@ export class OllamaProvider implements AIProvider {
     try {
       if (request.imageBase64) await this.ensureVision(combined);
 
-      const res = await this.fetcher(this.url("/api/chat"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: this.options.model,
-          stream: false,
-          format: "json",
-          ...(this.options.think === undefined ? {} : { think: this.options.think }),
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: buildUserText(request), ...(request.imageBase64 ? { images: [request.imageBase64] } : {}) },
-          ],
-          options: { temperature: 0.2, num_predict: this.options.maxOutputTokens },
-        }),
-        signal: combined,
-      });
-      if (!res.ok) {
-        throw new ProviderError(`Ollama returned an error (${res.status}).`, 502, "ollama_error");
+      let response = await this.chatOnce(request, "", combined, report);
+      // A local model sometimes comments on the work instead of giving the step that was asked for. It costs nothing
+      // to ask once more, so it is asked once, with the gap pointed out (a paid provider is never re-asked automatically).
+      if (lacksRequestedStep(request, response)) {
+        response = await this.chatOnce(request, NEXT_STEP_REMINDER, combined, report);
       }
-      const json = (await res.json()) as {
-        message?: { content?: string };
-        prompt_eval_count?: number;
-        eval_count?: number;
-      };
-      report?.({ inputTokens: json.prompt_eval_count ?? 0, outputTokens: json.eval_count ?? 0, estimatedCostUsd: 0 });
-      return parseModelResponse(json.message?.content ?? "", request);
+      return response;
     } catch (err) {
       if (err instanceof ProviderError || (err instanceof Error && err.name === "ProviderOutputError")) throw err;
       if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
@@ -98,5 +89,34 @@ export class OllamaProvider implements AIProvider {
       }
       throw new ProviderError(`Could not reach Ollama at ${this.options.baseUrl}. Is it running? (ollama serve)`, 502, "ollama_unreachable");
     }
+  }
+
+  private async chatOnce(request: TutorRequest, extra: string, signal: AbortSignal, report?: (usage: UsageReport) => void): Promise<TutorResponse> {
+    const res = await this.fetcher(this.url("/api/chat"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.options.model,
+        stream: false,
+        format: "json",
+        ...(this.options.think === undefined ? {} : { think: this.options.think }),
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: buildUserText(request) + extra, ...(request.imageBase64 ? { images: [request.imageBase64] } : {}) },
+        ],
+        options: { temperature: 0.2, num_predict: this.options.maxOutputTokens },
+      }),
+      signal,
+    });
+    if (!res.ok) {
+      throw new ProviderError(`Ollama returned an error (${res.status}).`, 502, "ollama_error");
+    }
+    const json = (await res.json()) as {
+      message?: { content?: string };
+      prompt_eval_count?: number;
+      eval_count?: number;
+    };
+    report?.({ inputTokens: json.prompt_eval_count ?? 0, outputTokens: json.eval_count ?? 0, estimatedCostUsd: 0 });
+    return parseModelResponse(json.message?.content ?? "", request);
   }
 }

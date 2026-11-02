@@ -38,18 +38,25 @@ const MODE_INSTRUCTIONS: Record<Exclude<TutorMode, "ask">, string> = {
     'Check the student\'s work line by line. First copy every numbered line into "lines". Then recompute each line and check its units. If a line is wrong, give the EARLIEST wrong line as "errorStep" and say in "message" exactly what is wrong, why, and what it should be (the specific value or step, for example: r = 6 cm must be 0.06 m because the formula uses metres). Do not just tell them to retry, and do not give the final answer unless they asked. If everything is correct, say so and set no errorStep.',
   hint: 'Give one hint for the student\'s next move without solving it. Put it in "hint", with a short lead-in in "message".',
   start:
-    'The student does not know how to start. Say how to begin (the first step or strategy) without carrying it out. Put it in "nextStep" and show that first step in "stepPreview".',
+    'The student does not know how to start. Say how to begin (the first step or strategy) without carrying it out. You must fill both "nextStep" and "stepPreview" (the first step as an equation line).',
   next_step:
-    'Suggest only the single next step, as a nudge, in "nextStep", and write that one step as equation lines in "stepPreview".',
+    'This is NOT a check of their work. Look at the LAST line the student wrote and suggest the single next step from it. You must fill both "nextStep" (one sentence saying what to do, for example: cancel the common factor x in the fraction) and "stepPreview" (the equation line that results from doing it). Do not repeat the last line or an earlier one, and do not give the finished answer when more steps remain. Assume the lines so far are right unless one is clearly wrong: use status "incomplete" when the work is going fine and "correct" only when it is finished. Use "error_found" only for a clearly wrong line, and then still give the step that fixes it. Never reply with only a comment about the work.',
   explain_step:
     "Explain the most recent line of work (or the part shown) in plain words: why it is valid or what it means. Do not solve the rest.",
 };
 
 const MAX_HISTORY_CHARS = 400;
 
+/** Said with the image, so "this", "it" and "what I selected" mean what the student sees in it. */
+const FOCUS_NOTES = {
+  selection: 'The image shows exactly the part of the board the student has selected. When they say "this", "it" or "what I selected", they mean what is in the image; never say that nothing is selected.',
+  recent: 'The image shows the student\'s most recent work on the board. When they say "this" or "it", they mean the work in the image.',
+  view: 'The image shows what is on the student\'s screen. When they say "this" or "it", they mean the work in the image.',
+} as const;
+
 /** The per-request instruction. The student's question is included for any mode, and is the whole task for "ask". */
 export function buildUserText(
-  request: Pick<TutorRequest, "mode" | "question" | "imageBase64" | "labeledLines" | "history">,
+  request: Pick<TutorRequest, "mode" | "question" | "imageBase64" | "labeledLines" | "history" | "focus">,
 ): string {
   const parts: string[] = [];
   if (request.history?.length) {
@@ -70,6 +77,8 @@ export function buildUserText(
     if (request.question?.trim()) parts.push(`The student adds: ${request.question.trim()}`);
   }
   if (request.labeledLines) parts.push(`The image labels ${request.labeledLines} line${request.labeledLines === 1 ? "" : "s"} of work with blue numbers.`);
+  const shown = request.imageBase64 ? FOCUS_NOTES[request.focus ?? "recent"] : undefined;
+  if (shown) parts.push(shown);
   if (!request.imageBase64) parts.push("(No image of the board was sent; say what you cannot see.)");
   return parts.join("\n");
 }
@@ -114,7 +123,8 @@ const asProse = (v: unknown, max: number): string | undefined => {
 function asStepPreview(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const steps = v
-    .map((s) => (typeof s === "string" ? normalizeMathText(s).replace(/`/g, "").trim().slice(0, 160) : ""))
+    // Every preview line is an equation, so it gets the equation treatment (log_2 -> log₂, x^2 -> x²) even without backticks.
+    .map((s) => (typeof s === "string" ? normalizeMathText(`\`${s.replace(/`/g, "")}\``).replace(/`/g, "").trim().slice(0, 160) : ""))
     .filter(Boolean)
     .slice(0, 3);
   return steps.length ? steps : undefined;
