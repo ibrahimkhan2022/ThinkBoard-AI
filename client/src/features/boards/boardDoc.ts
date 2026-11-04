@@ -1,4 +1,5 @@
 import { createId } from "../../lib/ids";
+import { sanitizeGraphSource } from "../graphs/graphForm";
 import { BACKGROUNDS, type Background, type CanvasObject, type Point, type Viewport } from "../whiteboard/types";
 import { INITIAL_VIEWPORT, MAX_SCALE, MIN_SCALE } from "../whiteboard/logic/viewport";
 import { isFontFamily } from "../whiteboard/logic/fontFamilies";
@@ -107,7 +108,8 @@ export function sanitizeObjects(value: unknown): CanvasObject[] {
         o.width > 0 &&
         o.height > 0
       ) {
-        objects.push({ id: o.id, kind: "image", uri: o.uri, x: o.x, y: o.y, width: o.width, height: o.height });
+        const graph = sanitizeGraphSource(o.graph);
+        objects.push({ id: o.id, kind: "image", uri: o.uri, x: o.x, y: o.y, width: o.width, height: o.height, ...(graph ? { graph } : {}) });
       }
     } else if (o.kind === "text") {
       if (

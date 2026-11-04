@@ -18,8 +18,11 @@ export function imageFilesFrom(data: PictureSource): File[] {
     if (file && file.type.startsWith("image/") && !found.includes(file)) found.push(file);
   };
   for (const file of Array.from(data.files ?? [])) add(file);
-  // Some browsers list a pasted picture only under `items`.
-  for (const item of Array.from(data.items ?? [])) if (item.kind === "file" && item.type.startsWith("image/")) add(item.getAsFile());
+  // Some browsers list a pasted picture only under `items`. Where both are filled they describe the same picture, and a
+  // browser hands back a different File object for each, so the second list is only used when the first had none.
+  if (found.length === 0) {
+    for (const item of Array.from(data.items ?? [])) if (item.kind === "file" && item.type.startsWith("image/")) add(item.getAsFile());
+  }
   return found;
 }
 

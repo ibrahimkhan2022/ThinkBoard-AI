@@ -615,4 +615,27 @@ describe("toolbar placement", () => {
     expect(placePanel({ ...toolbar, y: 60 }, "above", { width: 300, height: 220 }, canvas).y).toBe(canvas.height - 220 - EDGE_MARGIN);
     expect(placePanel({ ...toolbar, y: 100 }, "below", { width: 300, height: 220 }, canvas).y).toBeGreaterThan(144);
   });
+
+  it("opens right beside the text, not at the far bottom of the canvas, when there is no room above the toolbar", () => {
+    const canvas = { width: 800, height: 700 };
+    const panel = { width: 300, height: 300 };
+    // Text near the top: the toolbar is above it, with no room above the toolbar for the panel.
+    const box = { x: 100, y: 120, width: 400, height: 60 };
+    const toolbar = { x: 100, y: 120 - 26 - 12 - 44, width: 330, height: 44 };
+    const placed = placePanel(toolbar, "above", panel, canvas, box, 26);
+    expect(placed.y).toBe(box.y + box.height + 12 + 4); // just under the text
+    expect(placed.y).toBeLessThan(canvas.height - panel.height - EDGE_MARGIN);
+    // Text low on the screen with the toolbar below it: the panel goes above the text.
+    const lowBox = { x: 100, y: 560, width: 400, height: 60 };
+    const lowToolbar = { x: 100, y: 560 + 60 + 16, width: 330, height: 44 };
+    const above = placePanel(lowToolbar, "below", panel, canvas, lowBox, 26);
+    expect(above.y + panel.height).toBeLessThanOrEqual(lowBox.y);
+  });
+
+  it("keeps the panel above the toolbar when there is room, even with the text known", () => {
+    const canvas = { width: 800, height: 900 };
+    const box = { x: 100, y: 600, width: 300, height: 60 };
+    const toolbar = { x: 100, y: 600 - 26 - 12 - 44, width: 330, height: 44 };
+    expect(placePanel(toolbar, "above", { width: 300, height: 300 }, canvas, box, 26).y).toBe(toolbar.y - 6 - 300);
+  });
 });

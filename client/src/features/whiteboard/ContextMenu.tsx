@@ -7,6 +7,10 @@ import { CONTEXT_MENU_OVERLAY, useOverlayStore } from "../overlays/overlayStore"
 import { closeContextMenu, placeMenu, useContextMenuStore } from "./contextMenuState";
 import { DEFAULT_FONT_FAMILY, FONT_FAMILIES, type FontFamilyId } from "./logic/fontFamilies";
 import type { TextObject } from "./types";
+import { useGraphDialog } from "../graphs/graphStore";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { useImportImage } from "./import/useImportImage";
+import { screenToWorld } from "./logic/viewport";
 import { PEN_COLORS, useWhiteboardStore } from "./whiteboardStore";
 
 const WIDTH = 224;
@@ -24,8 +28,24 @@ const act = (run: () => void) => () => {
 export function ContextMenu() {
   const open = useOverlayStore((s) => s.active === CONTEXT_MENU_OVERLAY);
   const menu = useContextMenuStore((s) => s.menu);
-  if (!open || !menu) return null;
-  return menu.on === "objects" ? <ObjectsMenu at={menu.at} /> : <CanvasMenu at={menu.at} />;
+  // Clearing the whole board asks first (it can still be undone).
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  return (
+    <>
+      {open && menu && (menu.on === "objects" ? <ObjectsMenu at={menu.at} /> : <CanvasMenu at={menu.at} onClear={() => setConfirmingClear(true)} />)}
+      <ConfirmDialog
+        visible={confirmingClear}
+        title="Clear the whole board?"
+        message="Everything on this board will be removed. You can bring it back with Undo (Ctrl+Z)."
+        confirmLabel="Clear board"
+        onCancel={() => setConfirmingClear(false)}
+        onConfirm={() => {
+          setConfirmingClear(false);
+          useWhiteboardStore.getState().clear();
+        }}
+      />
+    </>
+  );
 }
 
 /** Positions its children at the pointer, kept inside the canvas once its own size is known. */
@@ -63,6 +83,7 @@ function ObjectsMenu({ at }: { at: { x: number; y: number } }) {
   const currentFont: FontFamilyId = texts[0]?.fontFamily ?? DEFAULT_FONT_FAMILY;
   const count = selected.length;
 
+  const graph = count === 1 && selected[0].kind === "image" ? selected[0].graph : undefined;
   const edit = () => {
     const box = texts[0];
     if (box) board().beginTextEditAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
@@ -105,29 +126,50 @@ function ObjectsMenu({ at }: { at: { x: number; y: number } }) {
 
       <View style={styles.section}>
         {texts.length === 1 && count === 1 && <Item label="Edit text" onPress={act(edit)} />}
+        {graph && <Item label="Edit graph" onPress={act(() => useGraphDialog.getState().edit(selected[0].id, graph))} />}
         <Item label="Copy" shortcut="Ctrl+C" onPress={act(() => void copyViaKeyboard())} />
         <Item label="Cut" shortcut="Ctrl+X" onPress={act(cut)} />
         <Item label="Duplicate" shortcut="Ctrl+D" onPress={act(() => board().duplicateSelected())} />
+        <Item label="Select all" shortcut="Ctrl+A" onPress={act(() => board().selectAll())} />
         <Item label={count > 1 ? `Delete ${count} items` : "Delete"} shortcut="Del" danger onPress={act(() => board().deleteSelected())} />
       </View>
     </Floating>
   );
 }
 
-function CanvasMenu({ at }: { at: { x: number; y: number } }) {
+function CanvasMenu({ at, onClear }: { at: { x: number; y: number }; onClear: () => void }) {
   const board = useWhiteboardStore.getState;
   const hasObjects = useWhiteboardStore((s) => s.objects.length > 0);
+  const importImage = useImportImage();
   const paste = () => {
     // Pasting from another application needs a real Ctrl+V: a browser only lets a page read the clipboard on that key press.
     if (!pasteViaKeyboard()) useToastStore.getState().show("Nothing copied on this board yet. To paste from elsewhere, press Ctrl+V.", "info");
   };
+  // A new text box where the menu was opened.
+  const addText = () => {
+    const { viewport } = board();
+    board().setTool("text");
+    board().beginTextEditAt(screenToWorld(viewport, at));
+  };
   return (
     <Floating at={at} label="Board menu">
       <View style={styles.section}>
+        <Item label="Add text here" shortcut="T" onPress={act(addText)} />
+        <Item label="Add a graph" onPress={act(() => useGraphDialog.getState().show())} />
+        <Item label="Add an image" shortcut="I" onPress={act(importImage)} />
+      </View>
+      <View style={styles.section}>
         <Item label="Paste" shortcut="Ctrl+V" onPress={act(paste)} />
         {hasObjects && <Item label="Select all" shortcut="Ctrl+A" onPress={act(() => board().selectAll())} />}
+        {hasObjects && <Item label="Clear board" danger onPress={act(onClear)} />}
+      </View>
+      <View style={styles.section}>
         <Item label="Undo" shortcut="Ctrl+Z" onPress={act(() => board().undo())} />
         <Item label="Redo" shortcut="Ctrl+Shift+Z" onPress={act(() => board().redo())} />
+      </View>
+      <View style={styles.section}>
+        {hasObjects && <Item label="Zoom to fit everything" onPress={act(() => board().fitContent())} />}
+        <Item label="Zoom to 100%" onPress={act(() => board().resetZoom())} />
       </View>
     </Floating>
   );

@@ -20,7 +20,7 @@ export interface MetaImageOptions {
 export function diagramPrompt(description: string): string {
   return [
     "Draw a clear educational diagram for a school student.",
-    "Style: clean line art on a plain white background, simple flat colours, plenty of space, no photographs, no decoration.",
+    "Style: clean educational line art on a plain white background with plenty of space, no photographs, no decoration. Use clear flat colours, and make it as colourful as the topic asks if it says so.",
     "Every label must be short, correctly spelled and easy to read in a neat sans-serif font; use arrows to show direction or relationships.",
     "Show only what is needed to understand the topic.",
     `Topic: ${description.trim()}`,

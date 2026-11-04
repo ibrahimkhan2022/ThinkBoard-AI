@@ -1,3 +1,4 @@
+import type { GraphSource } from "../graphs/graphForm";
 import type { Rect } from "@thinkboard/shared";
 import type { FontFamilyId } from "./logic/fontFamilies";
 import type { TextAlign } from "./logic/textFlow";
@@ -29,6 +30,8 @@ export interface ImageObject extends Rect {
   kind: "image";
   /** Data URI (web) or file URI (native) of the already downscaled picture. */
   uri: string;
+  /** For a graph made with the Graph tool: what it was made from, so it can be edited. Absent for ordinary pictures. */
+  graph?: GraphSource;
 }
 
 /**

@@ -29,6 +29,19 @@ describe("imageFilesFrom", () => {
     expect(imageFilesFrom({ files: [shot], items: [{ kind: "file", type: "image/png", getAsFile: () => shot }] })).toEqual([shot]);
   });
 
+  it("does not return a picture twice when the browser gives a different File object for each list (what a real paste does)", () => {
+    const fromFiles = file("image.png", "image/png");
+    const fromItems = file("image.png", "image/png"); // same picture, another object
+    expect(fromFiles).not.toBe(fromItems);
+    expect(imageFilesFrom({ files: [fromFiles], items: [{ kind: "file", type: "image/png", getAsFile: () => fromItems }] })).toEqual([fromFiles]);
+  });
+
+  it("still returns several different pictures from one list", () => {
+    const a = file("a.png", "image/png");
+    const b = file("b.png", "image/png");
+    expect(imageFilesFrom({ files: [a, b] })).toEqual([a, b]);
+  });
+
   it("returns nothing for text, an empty clipboard or missing lists", () => {
     expect(imageFilesFrom({ items: [{ kind: "string", type: "text/plain", getAsFile: () => null }] })).toEqual([]);
     expect(imageFilesFrom({})).toEqual([]);

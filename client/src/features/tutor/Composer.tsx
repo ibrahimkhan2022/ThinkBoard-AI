@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
 import { ArrowUp, ImagePlus, Mic, Square } from "../../components/icons";
 import { colors, radius } from "../../lib/theme";
 import { clock } from "../voice/wav";
@@ -80,7 +80,7 @@ export function Composer({
 
   return (
     <View style={styles.wrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} keyboardShouldPersistTaps="handled">
+      <View style={styles.chips}>
         {MODE_ACTIONS.map(({ mode, short, icon: Icon, label }) => (
           <Pressable
             key={mode}
@@ -108,7 +108,7 @@ export function Composer({
             <Text style={styles.chipText}>Diagram</Text>
           </Pressable>
         )}
-      </ScrollView>
+      </View>
 
       <View style={[styles.box, locked && styles.boxLocked]}>
         <TextInput
@@ -181,7 +181,8 @@ export function Composer({
 
 const styles = StyleSheet.create({
   wrap: { gap: 8, padding: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
-  chips: { gap: 6, paddingRight: 8 },
+  // The actions wrap onto a second line when the panel is narrow, so none is cut off or hidden behind a sideways scroll.
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: "#DAD8FA", backgroundColor: "#F7F6FF" },
   chipHover: { backgroundColor: colors.accentSoft },
   chipPressed: { backgroundColor: "#E0DEFB" },

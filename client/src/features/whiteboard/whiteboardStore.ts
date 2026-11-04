@@ -234,6 +234,8 @@ interface WhiteboardState {
   replaceObjects: (objects: CanvasObject[]) => void;
 
   addImage: (image: Omit<ImageObject, "id" | "kind">) => string;
+  /** Changes a picture's content (an edited graph) in place, keeping its position and size, as one undo step. */
+  updateImage: (id: string, change: Pick<ImageObject, "uri" | "graph">) => void;
   deleteSelected: () => void;
   duplicateSelected: () => void;
   /** Removes the selected objects and returns them (for the clipboard) as one undo step. */
@@ -862,6 +864,12 @@ export const useWhiteboardStore = create<WhiteboardState>((set, get) => {
       commitObjects([...get().objects, object]);
       set({ tool: "select", selectedIds: [object.id] });
       return object.id;
+    },
+
+    updateImage: (id, change) => {
+      const { objects } = get();
+      if (!objects.some((o) => o.id === id && o.kind === "image")) return;
+      commitObjects(objects.map((o) => (o.id === id && o.kind === "image" ? { ...o, uri: change.uri, ...(change.graph ? { graph: change.graph } : {}) } : o)));
     },
 
     deleteSelected: () => {

@@ -5,6 +5,7 @@ import { SvgXml } from "react-native-svg";
 import { Plus, Trash as Trash2, X } from "../../components/icons";
 import { colors, mono, radius } from "../../lib/theme";
 import { placeImage } from "../whiteboard/import/importImage";
+import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
 import { useModalGuard } from "../overlays/overlayStore";
 import {
   addEquation,
@@ -22,9 +23,10 @@ import {
   setSeriesName,
   setValue,
   type GraphForm,
+  type GraphSource,
   type GraphTab,
 } from "./graphForm";
-import { useGraphDialog } from "./graphStore";
+import { useGraphDialog, type EditingGraph } from "./graphStore";
 import { rasterizeSvg } from "./rasterizeSvg";
 
 const TABS: { id: GraphTab; label: string }[] = [
@@ -43,18 +45,20 @@ const noOutline = { outlineStyle: "none" } as unknown as TextStyle;
  */
 export function GraphDialog() {
   const open = useGraphDialog((s) => s.open);
+  const editing = useGraphDialog((s) => s.editing);
   const hide = useGraphDialog((s) => s.hide);
   useModalGuard(open);
   return (
     <Modal transparent visible={open} animationType="fade" onRequestClose={hide}>
-      {open && <GraphDialogBody onClose={hide} />}
+      {open && <GraphDialogBody key={editing?.id ?? "new"} editing={editing} onClose={hide} />}
     </Modal>
   );
 }
 
-function GraphDialogBody({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<GraphTab>("function");
-  const [form, setForm] = useState<GraphForm>(defaultForm);
+function GraphDialogBody({ editing, onClose }: { editing: EditingGraph | null; onClose: () => void }) {
+  // Editing starts from what the graph was made from; Cancel leaves the graph on the board as it was.
+  const [tab, setTab] = useState<GraphTab>(editing?.source.tab ?? "function");
+  const [form, setForm] = useState<GraphForm>(() => editing?.source.form ?? defaultForm());
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [previewWidth, setPreviewWidth] = useState(0);
@@ -73,7 +77,9 @@ function GraphDialogBody({ onClose }: { onClose: () => void }) {
     setBusy(true);
     try {
       const picture = await rasterizeSvg(drawing.svg, drawing.width, drawing.height, 1.5);
-      placeImage({ uri: picture, width: drawing.width, height: drawing.height });
+      const source: GraphSource = { tab, form };
+      if (editing) useWhiteboardStore.getState().updateImage(editing.id, { uri: picture, graph: source });
+      else placeImage({ uri: picture, width: drawing.width, height: drawing.height }, 0, source);
       onClose();
     } catch (err) {
       setFailure(err instanceof Error ? err.message : "Could not add the graph.");
@@ -105,9 +111,9 @@ function GraphDialogBody({ onClose }: { onClose: () => void }) {
 
   return (
     <View style={styles.backdrop}>
-      <View style={styles.card} accessibilityLabel="Add a graph">
+      <View style={styles.card} accessibilityLabel={editing ? "Edit the graph" : "Add a graph"}>
         <View style={styles.header}>
-          <Text style={styles.title}>Add a graph</Text>
+          <Text style={styles.title}>{editing ? "Edit graph" : "Add a graph"}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.close}>
             <X size={18} color={colors.muted} strokeWidth={2.25} />
           </Pressable>
@@ -130,8 +136,8 @@ function GraphDialogBody({ onClose }: { onClose: () => void }) {
           <Pressable accessibilityRole="button" onPress={onClose} style={[styles.button, styles.cancel]}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Add the graph to the board" accessibilityState={{ disabled: !canAdd }} disabled={!canAdd} onPress={() => void add()} style={[styles.button, styles.confirm, !canAdd && styles.confirmOff]}>
-            <Text style={styles.confirmText}>{busy ? "Adding…" : "Add to board"}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={editing ? "Update the graph on the board" : "Add the graph to the board"} accessibilityState={{ disabled: !canAdd }} disabled={!canAdd} onPress={() => void add()} style={[styles.button, styles.confirm, !canAdd && styles.confirmOff]}>
+            <Text style={styles.confirmText}>{busy ? (editing ? "Updating…" : "Adding…") : editing ? "Update graph" : "Add to board"}</Text>
           </Pressable>
         </View>
       </View>

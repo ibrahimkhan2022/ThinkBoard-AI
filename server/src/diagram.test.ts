@@ -153,6 +153,33 @@ describe("a diagram of the situation on the board", () => {
     expect(result.meta.usage!.estimatedCostUsd).toBeCloseTo(usage.totalSpentUsd, 5);
   });
 
+  it("tells the brief writer when the picture is what the student selected, and what to do when no topic is named", async () => {
+    const fetchImpl = fakeFetch(jsonResponse(chatCompletion(brief)), image("QUJD"));
+    const { app } = await serverWith(fetchImpl);
+    const res = await app.inject({ method: "POST", url: "/api/diagram", payload: { ...onBoard, description: "make a colorful diagram", fromSelection: true } });
+    expect(res.statusCode).toBe(200);
+    const first = bodyOf(fetchImpl.mock.calls[0]);
+    const system: string = first.messages[0].content;
+    // The rule that stops an unrelated picture: with no topic named, draw what the board shows; keep a style the student asks for.
+    expect(system).toMatch(/draw what the board shows/i);
+    expect(system).toMatch(/never draw something unrelated to the board/i);
+    expect(system).toMatch(/style the student asks for/i);
+    const text: string = first.messages[1].content[0].text;
+    expect(text).toContain("make a colorful diagram");
+    expect(text).toContain("the student selected");
+  });
+
+  it("says the picture is their recent work when nothing was selected", async () => {
+    const fetchImpl = fakeFetch(jsonResponse(chatCompletion(brief)), image("QUJD"));
+    const { app } = await serverWith(fetchImpl);
+    await app.inject({ method: "POST", url: "/api/diagram", payload: { ...onBoard, description: "make a colorful diagram" } });
+    expect(bodyOf(fetchImpl.mock.calls[0]).messages[1].content[0].text).toContain("was working on");
+  });
+
+  it("lets the picture be as colourful as asked", () => {
+    expect(diagramPrompt("a colourful water cycle")).toMatch(/colourful as the topic asks/);
+  });
+
   it("draws nothing and charges nothing for the image when the brief step fails", async () => {
     const fetchImpl = fakeFetch(jsonResponse({ error: { message: "bad" } }, { status: 400 }));
     const { app, selection } = await serverWith(fetchImpl);

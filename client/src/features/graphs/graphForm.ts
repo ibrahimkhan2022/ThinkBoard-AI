@@ -20,6 +20,54 @@ export interface GraphForm {
   rows: { label: string; values: string[] }[];
 }
 
+/** What a graph on the board was made from, kept with its picture so it can be edited later. */
+export interface GraphSource {
+  tab: GraphTab;
+  form: GraphForm;
+}
+
+const TABS: readonly string[] = ["function", "line", "bar", "pie"];
+const strings = (v: unknown, max: number): string[] | null =>
+  Array.isArray(v) && v.length >= 1 && v.length <= max && v.every((s) => typeof s === "string" && s.length <= 200) ? (v as string[]) : null;
+const text = (v: unknown): string => (typeof v === "string" ? v.slice(0, 200) : "");
+
+/** A graph's saved settings, or undefined if they are missing or damaged (the picture is then just a picture). Stored boards and pasted objects pass through this. */
+export function sanitizeGraphSource(raw: unknown): GraphSource | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const { tab, form } = raw as { tab?: unknown; form?: unknown };
+  if (typeof tab !== "string" || !TABS.includes(tab) || typeof form !== "object" || form === null) return undefined;
+  const f = form as Record<string, unknown>;
+  const equations = strings(f.equations, MAX_EQUATIONS);
+  const seriesNames = strings(f.seriesNames, MAX_SERIES);
+  const rows = Array.isArray(f.rows) && f.rows.length >= 1 && f.rows.length <= MAX_CATEGORIES ? f.rows : null;
+  if (!equations || !seriesNames || !rows) return undefined;
+  const cleanRows: GraphForm["rows"] = [];
+  for (const row of rows) {
+    const r = row as { label?: unknown; values?: unknown };
+    if (typeof row !== "object" || row === null || typeof r.label !== "string" || !Array.isArray(r.values) || !r.values.every((v) => typeof v === "string")) return undefined;
+    // Every row has one value per series.
+    cleanRows.push({ label: r.label.slice(0, 40), values: seriesNames.map((_, k) => String((r.values as string[])[k] ?? "").slice(0, 20)) });
+  }
+  return {
+    tab: tab as GraphTab,
+    form: {
+      equations,
+      xMin: text(f.xMin),
+      xMax: text(f.xMax),
+      autoY: f.autoY !== false,
+      yMin: text(f.yMin),
+      yMax: text(f.yMax),
+      grid: f.grid !== false,
+      functionTitle: text(f.functionTitle),
+      title: text(f.title),
+      xLabel: text(f.xLabel),
+      yLabel: text(f.yLabel),
+      seriesNames,
+      rows: cleanRows,
+    },
+  };
+}
+
 export const defaultForm = (): GraphForm => ({
   equations: ["y = x^2 - 4"],
   xMin: "-10",

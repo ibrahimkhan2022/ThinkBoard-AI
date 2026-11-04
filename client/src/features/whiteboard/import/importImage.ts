@@ -1,6 +1,7 @@
 import * as ImagePicker from "expo-image-picker";
 import { visibleWorldRect } from "../logic/viewport";
 import { useWhiteboardStore } from "../whiteboardStore";
+import type { GraphSource } from "../../graphs/graphForm";
 import { prepareImage, type PreparedImage } from "./prepareImage";
 
 /** Fraction of the visible board a newly added image may occupy. */
@@ -23,7 +24,7 @@ export async function importImageToBoard(): Promise<boolean> {
  * Puts a prepared picture on the board, centred in the part the user is looking at and small enough to fit it.
  * `stagger` moves it down and right so several pictures added at once do not sit exactly on top of each other.
  */
-export function placeImage(image: PreparedImage, stagger = 0): void {
+export function placeImage(image: PreparedImage, stagger = 0, graph?: GraphSource): void {
   const { viewport, canvasSize } = useWhiteboardStore.getState();
   const view = visibleWorldRect(viewport, canvasSize);
 
@@ -32,6 +33,7 @@ export function placeImage(image: PreparedImage, stagger = 0): void {
   const height = image.height * fit;
   useWhiteboardStore.getState().addImage({
     uri: image.uri,
+    ...(graph ? { graph } : {}),
     width,
     height,
     x: view.x + (view.width - width) / 2 + stagger * 24,

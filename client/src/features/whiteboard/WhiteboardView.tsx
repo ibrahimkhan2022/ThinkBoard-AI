@@ -1,5 +1,6 @@
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { ToastHost } from "../feedback/ToastHost";
+import { EditGraphButton } from "../graphs/EditGraphButton";
 import { GraphDialog } from "../graphs/GraphDialog";
 import { AnnotationChip } from "../annotations/AnnotationChip";
 import { AnswerPopup } from "../annotations/AnswerPopup";
@@ -29,6 +30,7 @@ export function WhiteboardView() {
       <CalculatorPanel />
       <ToolRail dock={compact} />
       <ContextMenu />
+      <EditGraphButton />
       <GraphDialog />
       <ToastHost />
     </View>

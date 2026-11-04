@@ -38,14 +38,24 @@ export function placeToolbar(box: Rect, toolbar: Size, canvas: Size, aboveCleara
 }
 
 /**
- * The symbol keyboard opens on the far side of the toolbar from the text box, so it never
- * covers the text being edited; with no room there it docks at the bottom of the canvas.
+ * The symbol keyboard opens on the far side of the toolbar from the text box (above it when the toolbar is above the text), so it
+ * never covers the text being edited. When that side has no room, and the text box is known, it opens on the other side of the
+ * text, right beside it, instead of going to the far bottom of the canvas. Only with nowhere near the text does it dock at the
+ * bottom of the canvas.
  */
-export function placePanel(toolbar: Rect, side: "above" | "below", panel: Size, canvas: Size): { x: number; y: number } {
+export function placePanel(toolbar: Rect, side: "above" | "below", panel: Size, canvas: Size, box?: Rect, aboveClearance = 0): { x: number; y: number } {
   const x = clamp(toolbar.x, EDGE_MARGIN, canvas.width - panel.width - EDGE_MARGIN);
   const up = toolbar.y - 6 - panel.height;
   const down = toolbar.y + toolbar.height + 6;
+  const fits = (y: number) => y >= EDGE_MARGIN && y + panel.height <= canvas.height - EDGE_MARGIN;
   if (side === "above" && up >= EDGE_MARGIN) return { x, y: up };
-  if (side === "below" && down + panel.height <= canvas.height - EDGE_MARGIN) return { x, y: down };
+  if (side === "below" && fits(down)) return { x, y: down };
+  if (box) {
+    // Beside the text on its other side: under it (the toolbar is above), or above it past the move grip (the toolbar is below).
+    const underText = box.y + box.height + TOOLBAR_GAP + 4;
+    const overText = box.y - aboveClearance - TOOLBAR_GAP - panel.height;
+    const candidate = side === "above" ? underText : overText;
+    if (fits(candidate)) return { x, y: candidate };
+  }
   return { x, y: Math.max(EDGE_MARGIN, canvas.height - panel.height - EDGE_MARGIN) };
 }

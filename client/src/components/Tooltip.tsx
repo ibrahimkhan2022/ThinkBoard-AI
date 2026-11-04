@@ -12,8 +12,8 @@ interface Props {
 const placement: Record<NonNullable<Props["side"]>, ViewStyle> = {
   right: { left: "100%", top: "50%", marginLeft: 8, transform: [{ translateY: -14 }] },
   left: { right: "100%", top: "50%", marginRight: 8, transform: [{ translateY: -14 }] },
-  top: { bottom: "100%", left: "50%", marginBottom: 8, transform: [{ translateX: -50 }] },
-  bottom: { top: "100%", left: "50%", marginTop: 8, transform: [{ translateX: -50 }] },
+  top: { bottom: "100%", left: "50%", marginBottom: 8, transform: [{ translateX: "-50%" }] },
+  bottom: { top: "100%", left: "50%", marginTop: 8, transform: [{ translateX: "-50%" }] },
 };
 
 /**
@@ -31,9 +31,7 @@ export function Tooltip({ text, side = "bottom", disabled, children }: Props) {
       {children}
       {visible && (
         <View pointerEvents="none" style={[styles.tip, placement[side]]}>
-          <Text style={styles.text} numberOfLines={1}>
-            {text}
-          </Text>
+          <Text style={styles.text}>{text}</Text>
         </View>
       )}
     </View>
@@ -49,6 +47,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 6,
     backgroundColor: colors.text,
+    // An absolutely placed box would otherwise shrink to the little room beside its button and clip the words.
+    ...({ width: "max-content" } as object),
   },
   text: { color: "#fff", fontSize: 12, fontWeight: "600", ...({ whiteSpace: "nowrap" } as object) },
 });

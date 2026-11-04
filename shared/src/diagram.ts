@@ -12,6 +12,8 @@ export const DiagramRequestSchema = z.object({
    */
   imageBase64: z.string().max(7_000_000).optional(),
   imageMimeType: z.enum(["image/png", "image/jpeg"]).optional(),
+  /** True when the picture is what the student selected (rather than their recent work), so the brief writer is told. */
+  fromSelection: z.boolean().optional(),
   /** Typed lines of the problem, exactly as written (see TutorRequest.typedLines). */
   typedLines: z.array(z.object({ line: z.number().int().min(1).max(40), text: z.string().min(1).max(300) })).max(40).optional(),
 }).refine((r) => !r.imageBase64 || r.imageMimeType, { message: "imageMimeType is required when imageBase64 is present", path: ["imageMimeType"] });

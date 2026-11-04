@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { usePanGesture, usePinchGesture, useSimultaneousGestures } from "react-native-gesture-handler";
+import { useGraphDialog } from "../graphs/graphStore";
 import { createDoubleTapDetector } from "./logic/doubleTap";
 import { handleAt, HANDLE_RADIUS_PX, hitTest, rectContains, resizeFromCorner, textHandleAt, translateObject, type TextEdge } from "./logic/hitTest";
 import { normalizeRect, objectsInMarquee } from "./logic/selection";
@@ -200,6 +201,13 @@ export function useBoardGestures() {
     // Double-clicking text with the Select tool edits it.
     if (hit?.kind === "text" && !shift && doubleTap.press(hit.id, Date.now())) {
       store().beginTextEditAt(world);
+      interaction.current = { kind: "none" };
+      return;
+    }
+    // Double-clicking a graph with the Select tool opens it for editing.
+    if (hit?.kind === "image" && hit.graph && !shift && doubleTap.press(hit.id, Date.now())) {
+      store().setSelection([hit.id]);
+      useGraphDialog.getState().edit(hit.id, hit.graph);
       interaction.current = { kind: "none" };
       return;
     }

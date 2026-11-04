@@ -6,7 +6,7 @@ import { useAnnotationStore } from "../annotations/annotationStore";
 import { resolveAnnotation } from "../annotations/resolveAnnotation";
 import { chooseAIRegion, fitMarkerMargin, type AIRegion, type FocusMode } from "../whiteboard/logic/aiRegion";
 import { typedLinesOf } from "../whiteboard/logic/typedLines";
-import { diagramIsAboutBoard, wantsDiagram } from "./diagramIntent";
+import { diagramSubject, wantsDiagram } from "./diagramIntent";
 import { visibleWorldRect } from "../whiteboard/logic/viewport";
 import { placeImage } from "../whiteboard/import/importImage";
 import { prepareImage } from "../whiteboard/import/prepareImage";
@@ -191,6 +191,22 @@ export const useTutorStore = create<TutorState>((set, get) => ({
     const text = description.trim();
     if (get().loading || !text) return;
     const studentTurn = message({ role: "student", kind: "question", text: typedByStudent ? text : `Draw a diagram: ${text}` });
+    // What is this diagram about? The student's selection or recent work when they point at it, name no topic, or have something
+    // selected; their own words when they name a topic. With neither a topic nor anything on the board there is nothing to
+    // draw, so the student is asked (nothing is bought) instead of a random picture being made.
+    const board = useWhiteboardStore.getState();
+    const picked = chooseAIRegion(board.objects, board.selectedIds, board.viewport, board.canvasSize, get().focusMode);
+    const subject = diagramSubject(text, { hasSelection: picked?.source === "selection", boardHasContent: picked !== null });
+    if (subject === "ask") {
+      set({
+        messages: append(
+          get().messages,
+          studentTurn,
+          message({ role: "tutor", kind: "notice", text: "I am not sure what to draw yet. Select what you want drawn on your board and ask again, or say what the diagram should show (for example “the water cycle”)." }),
+        ),
+      });
+      return;
+    }
     // Paid AI is only ever used on an explicit click, and only after the student has agreed to it.
     if (get().server?.paid && !get().paidAcknowledged) {
       set({ messages: append(get().messages, studentTurn, message({ role: "tutor", kind: "error", text: "Please confirm that you want to use the paid AI tutor first." })) });
@@ -199,10 +215,8 @@ export const useTutorStore = create<TutorState>((set, get) => ({
     set({ messages: append(get().messages, studentTurn), loading: true });
     try {
       const request: DiagramRequest = { sessionId: get().sessionId, description: text.slice(0, 400) };
-      // "What this situation looks like": the board is shown to Muse Spark first, so it knows what the situation is.
-      if (diagramIsAboutBoard(text)) {
-        const board = useWhiteboardStore.getState();
-        const picked = chooseAIRegion(board.objects, board.selectedIds, board.viewport, board.canvasSize, get().focusMode);
+      // The board (the selection if there is one) is shown to Muse Spark first, so it knows what to draw.
+      if (subject === "board") {
         const ai = picked && fitMarkerMargin(picked, AI_IMAGE_MAX_DIMENSION);
         if (ai) {
           const { renderRegion } = await import("../whiteboard/export/renderRegion");
@@ -214,6 +228,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
           const typed = typedLinesOf(ai.lines, board.objects);
           request.imageBase64 = image.base64;
           request.imageMimeType = image.mimeType;
+          if (picked?.source === "selection") request.fromSelection = true;
           if (typed.length) request.typedLines = typed;
         }
       }

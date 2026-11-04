@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useOverlayStore } from "../overlays/overlayStore";
 import { OBJECTS_MIME } from "../whiteboard/logic/clipboard";
 import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
-import { copySelection, copyViaKeyboard, cutSelection, pasteFrom, pasteViaKeyboard } from "./clipboardActions";
+import { copySelection, copyViaKeyboard, cutSelection, lastCopy, pasteFrom, pasteViaKeyboard } from "./clipboardActions";
+import { createPasteGuard, PASTE_EVENT_WAIT_MS } from "./pasteGuard";
 import { addImageFiles, imageFilesFrom } from "./pastedImages";
 import { isMacPlatform, isTypingTarget } from "./shortcuts";
 
@@ -26,6 +27,8 @@ export function useClipboard() {
     // after the key (some browsers send none with nothing selected), the key press is handled directly, once.
     // How many key presses of each kind are still waiting for the browser's own event.
     const waiting = { copy: 0, cut: 0, paste: 0 };
+    // Paste is arbitrated separately: an event that is merely slow must not paste a second time after the fallback has pasted.
+    const pasteGuard = createPasteGuard();
     const settle = (kind: keyof typeof waiting) => {
       waiting[kind] = Math.max(0, waiting[kind] - 1);
     };
@@ -42,9 +45,17 @@ export function useClipboard() {
     };
     const onPaste = (e: ClipboardEvent) => {
       settle("paste");
-      if (isTypingTarget(e.target) || useOverlayStore.getState().modalDepth > 0 || !e.clipboardData) return;
+      if (isTypingTarget(e.target) || useOverlayStore.getState().modalDepth > 0 || !e.clipboardData) {
+        pasteGuard.eventArrived({ raw: "", text: "", hasPicture: true }); // not ours to paste; just ends the wait
+        return;
+      }
       // A picture from outside (a screenshot, a copied image): put it on the board. Objects copied here come first.
       const pictures = e.clipboardData.getData(OBJECTS_MIME) ? [] : imageFilesFrom(e.clipboardData);
+      const content = { raw: e.clipboardData.getData(OBJECTS_MIME), text: e.clipboardData.getData("text/plain"), hasPicture: pictures.length > 0 };
+      if (!pasteGuard.eventArrived(content)) {
+        e.preventDefault(); // the fallback already pasted exactly this a moment ago
+        return;
+      }
       if (pictures.length > 0) {
         e.preventDefault();
         void addImageFiles(pictures);
@@ -65,12 +76,18 @@ export function useClipboard() {
       if (isTypingTarget(e.target) || useOverlayStore.getState().modalDepth > 0 || useWhiteboardStore.getState().textDraft) return;
       if ((window.getSelection()?.toString() ?? "") !== "") return;
       const expected = key === "c" ? "copy" : key === "x" ? "cut" : "paste";
+      if (expected === "paste") {
+        pasteGuard.keyPressed();
+        setTimeout(() => {
+          if (pasteGuard.waitedWithoutEvent(lastCopy())) pasteViaKeyboard();
+        }, PASTE_EVENT_WAIT_MS);
+        return;
+      }
       waiting[expected]++;
       setTimeout(() => {
         if (waiting[expected] === 0) return; // the browser sent the event after all
         settle(expected);
-        if (expected === "paste") pasteViaKeyboard();
-        else if (copyViaKeyboard() === "copied" && expected === "cut") useWhiteboardStore.getState().cutSelected();
+        if (copyViaKeyboard() === "copied" && expected === "cut") useWhiteboardStore.getState().cutSelected();
       }, 80);
     };
 

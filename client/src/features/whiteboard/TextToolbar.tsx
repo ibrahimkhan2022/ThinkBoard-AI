@@ -8,6 +8,7 @@ import { toggleBoardDictation } from "../voice/boardDictation";
 import { useVoiceStore } from "../voice/voiceStore";
 import { refocusEditor, syncEditorSelection } from "./editorFocus";
 import { useKeepsEditorFocus } from "./useKeepsEditorFocus";
+import { useOutsidePress } from "./useOutsidePress";
 import { placePanel, placeToolbar, GRIP_ALLOWANCE } from "./logic/toolbarPlacement";
 import { flowOf } from "./logic/textMetrics";
 import { inheritedAttrs, rangeState, type AttrKey } from "./logic/textRuns";
@@ -117,6 +118,9 @@ export function TextToolbar() {
   // The bar and the panel only exist while there is something to format, so the listeners attach when they appear.
   useKeepsEditorFocus(bar, target !== null);
   useKeepsEditorFocus(panel, target !== null && symbols);
+  // The symbol keyboard closes when a press lands anywhere else (the Σ button toggles it itself).
+  const sigma = useRef<ComponentRef<typeof View>>(null);
+  useOutsidePress(symbols && editing, () => setSymbols(false), [panel, sigma]);
 
   const session = useWhiteboardStore((s) => s.textDraft?.session ?? null);
   // A different text box starts with the pop-ups closed.
@@ -130,7 +134,7 @@ export function TextToolbar() {
 
   const placed = placeToolbar(target.box, barSize, canvas, editing ? GRIP_ALLOWANCE : 0);
   const panelWidth = Math.min(SYMBOL_PANEL_WIDTH, canvas.width - 16);
-  const panelAt = placePanel({ x: placed.x, y: placed.y, width: barSize.width, height: barSize.height }, placed.side, { width: panelWidth, height: panelHeight }, canvas);
+  const panelAt = placePanel({ x: placed.x, y: placed.y, width: barSize.width, height: barSize.height }, placed.side, { width: panelWidth, height: panelHeight }, canvas, target.box, editing ? GRIP_ALLOWANCE : 0);
 
   const toggle = (key: AttrKey) => {
     syncEditorSelection();
@@ -212,16 +216,18 @@ export function TextToolbar() {
         </Button>
 
         {editing && (
-          <Button
-            label="Math and symbols"
-            on={symbols}
-            onPress={() => {
-              setSymbols((s) => !s);
-              refocusEditor();
-            }}
-          >
-            <Sigma size={16} color={symbols ? colors.accent : colors.text} strokeWidth={2.25} />
-          </Button>
+          <View ref={sigma}>
+            <Button
+              label="Math and symbols"
+              on={symbols}
+              onPress={() => {
+                setSymbols((s) => !s);
+                refocusEditor();
+              }}
+            >
+              <Sigma size={16} color={symbols ? colors.accent : colors.text} strokeWidth={2.25} />
+            </Button>
+          </View>
         )}
 
         {editing && voiceOffered && (

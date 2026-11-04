@@ -8,7 +8,7 @@ export interface ClipboardData {
 }
 
 /** What this session last copied, to count repeated pastes (each lands further along) and to survive a clipboard that drops our type. */
-let last: { raw: string; pastes: number } | null = null;
+let last: { raw: string; text: string; pastes: number } | null = null;
 
 const board = () => useWhiteboardStore.getState();
 
@@ -29,7 +29,7 @@ export function copySelection(data: ClipboardData): boolean {
   data.setData(OBJECTS_MIME, raw);
   const text = plainTextOf(objects);
   if (text) data.setData("text/plain", text);
-  last = { raw, pastes: 0 };
+  last = { raw, text, pastes: 0 };
   return true;
 }
 
@@ -50,7 +50,7 @@ export function pasteFrom(data: ClipboardData): boolean {
   const objects = parseObjects(raw);
   if (objects) {
     const pastes = last?.raw === raw ? last.pastes + 1 : 1;
-    last = { raw, pastes };
+    last = { raw, text: last?.raw === raw ? last.text : plainTextOf(objects), pastes };
     board().pasteObjects(objects, DUPLICATE_OFFSET * pastes);
     return true;
   }
@@ -61,6 +61,9 @@ export function pasteFrom(data: ClipboardData): boolean {
   }
   return false;
 }
+
+/** What this session last copied (the board's own format and its text), so a late paste event can be recognised as the paste that already happened. */
+export const lastCopy = (): { raw: string; text: string } | null => (last ? { raw: last.raw, text: last.text } : null);
 
 export const resetClipboardMemory = () => {
   last = null;
