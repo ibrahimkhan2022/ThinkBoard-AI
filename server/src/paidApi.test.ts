@@ -86,7 +86,7 @@ describe("HTTP API with the paid provider (fake network)", () => {
     expect(usage.totalSpentUsd).toBeCloseTo(0.003525, 6);
     expect(usage.remainingBudgetUsd).toBeLessThan(150);
 
-    expect((await app.inject({ method: "GET", url: "/api/health" })).json()).toEqual({ ok: true, provider: "meta", isMock: false, paid: true, model: "muse-spark-1.3" });
+    expect((await app.inject({ method: "GET", url: "/api/health" })).json()).toEqual({ ok: true, provider: "meta", isMock: false, paid: true, model: "muse-spark-1.3", diagrams: true });
   });
 
   it("answers 429 with a clear message once the session limit is reached, without calling Meta again", async () => {

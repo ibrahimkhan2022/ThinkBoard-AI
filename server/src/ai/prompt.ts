@@ -7,7 +7,7 @@ import {
   type TutorResponse,
 } from "@thinkboard/shared";
 import { ProviderOutputError } from "../providers/errors";
-import { reconcileArithmetic } from "./reconcile";
+import { reconcileArithmetic, withdrawFalsePowerClaim } from "./reconcile";
 import { wantsAnswer } from "./scopeGuard";
 
 /**
@@ -56,7 +56,7 @@ const FOCUS_NOTES = {
 
 /** The per-request instruction. The student's question is included for any mode, and is the whole task for "ask". */
 export function buildUserText(
-  request: Pick<TutorRequest, "mode" | "question" | "imageBase64" | "labeledLines" | "history" | "focus">,
+  request: Pick<TutorRequest, "mode" | "question" | "imageBase64" | "labeledLines" | "history" | "focus" | "typedLines">,
 ): string {
   const parts: string[] = [];
   if (request.history?.length) {
@@ -77,6 +77,12 @@ export function buildUserText(
     if (request.question?.trim()) parts.push(`The student adds: ${request.question.trim()}`);
   }
   if (request.labeledLines) parts.push(`The image labels ${request.labeledLines} line${request.labeledLines === 1 ? "" : "s"} of work with blue numbers.`);
+  if (request.typedLines?.length) {
+    parts.push(
+      "These numbered lines are typed text, given here exactly as typed. Trust these characters over the picture: ² and ³ mean squared and cubed, ₂ is a subscript, ^(...) is a raised group. Do not say a line is missing a square, power or bracket that these characters show.\n" +
+        request.typedLines.map((t) => `${t.line}: ${t.text}`).join("\n"),
+    );
+  }
   const shown = request.imageBase64 ? FOCUS_NOTES[request.focus ?? "recent"] : undefined;
   if (shown) parts.push(shown);
   if (!request.imageBase64) parts.push("(No image of the board was sent; say what you cannot see.)");
@@ -108,6 +114,18 @@ function asTranscription(v: unknown): { line: number; text: string }[] {
     if (typeof n === "number" && Number.isInteger(n) && n > 0 && typeof text === "string" && text.trim()) out.push({ line: n, text: text.slice(0, 300) });
   }
   return out;
+}
+
+/** Typed lines are known exactly, so they replace the model's own copy of those lines (which can misread a raised 2). */
+export function withTypedLines(
+  transcribed: { line: number; text: string }[],
+  typed: { line: number; text: string }[] | undefined,
+): { line: number; text: string }[] {
+  if (!typed?.length) return transcribed;
+  const exact = new Map(typed.map((t) => [t.line, t.text]));
+  const merged = transcribed.map((t) => ({ line: t.line, text: exact.get(t.line) ?? t.text }));
+  for (const [line, text] of exact) if (!merged.some((t) => t.line === line)) merged.push({ line, text });
+  return merged;
 }
 
 const asNumber = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -153,7 +171,7 @@ export function sanitizeHighlight(raw: unknown): TutorResponse["highlight"] {
  * says: answers are revealed only when the student asked for one, a location without a confidence is dropped,
  * and an off-topic or needs-input reply never carries a location.
  */
-export function parseModelResponse(text: string, request?: Pick<TutorRequest, "mode" | "question">): TutorResponse {
+export function parseModelResponse(text: string, request?: Pick<TutorRequest, "mode" | "question" | "typedLines">): TutorResponse {
   // The answer is only ever revealed to a student who explicitly asked for it in words.
   const mayReveal = request?.mode === "ask" && wantsAnswer(request.question);
   const raw = extractJson(text);
@@ -193,7 +211,10 @@ export function parseModelResponse(text: string, request?: Pick<TutorRequest, "m
   };
 
   // The calculator, not the model, has the last word on arithmetic when checking work.
-  const checked = request?.mode === "check_work" && !quiet ? reconcileArithmetic(response, verifyLines(asTranscription(r.lines))) : response;
+  const checked =
+    request?.mode === "check_work" && !quiet
+      ? withdrawFalsePowerClaim(reconcileArithmetic(response, verifyLines(withTypedLines(asTranscription(r.lines), request?.typedLines))), request?.typedLines)
+      : response;
 
   const parsed = TutorResponseSchema.safeParse(JSON.parse(JSON.stringify(checked)));
   if (!parsed.success) throw new ProviderOutputError("The model reply did not match the expected shape");

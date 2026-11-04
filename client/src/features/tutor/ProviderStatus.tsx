@@ -66,6 +66,7 @@ export function ProviderNotice() {
             <Text style={styles.body}>
               Each action sends an image of the part of your board it looks at to Meta’s AI ({TYPICAL_COST} each). Nothing is sent until you
               press an action.
+              {server.diagrams ? " A diagram, drawn by Meta\u2019s Muse Image, costs about 1 cent." : ""}
             </Text>
             <Pressable accessibilityRole="button" onPress={acknowledge} style={styles.confirm}>
               <Text style={styles.confirmText}>I understand, enable the tutor</Text>

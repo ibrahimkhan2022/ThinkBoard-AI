@@ -1,6 +1,7 @@
 import { UsageTracker } from "../budget";
 import type { AppConfig } from "../config";
 import { MetaProvider, priceFor } from "./meta";
+import { DiagramService, MetaImageProvider } from "./metaImage";
 import { MockProvider } from "./mock";
 import { OllamaProvider } from "./ollama";
 import type { AIProvider } from "./types";
@@ -15,6 +16,8 @@ export interface ProviderSelection {
   paid: boolean;
   /** The model in use, for display. */
   model?: string;
+  /** Draws diagrams (Muse Image); only with the paid Meta provider. */
+  diagram?: DiagramService;
 }
 
 export interface SelectOptions {
@@ -70,20 +73,33 @@ export function selectProvider(config: AppConfig, options: SelectOptions = {}): 
         },
         { file: options.usageFile, now: options.now },
       );
+      const meta = new MetaProvider({
+        apiKey: config.MODEL_API_KEY,
+        model: config.META_MODEL,
+        baseUrl: config.META_BASE_URL,
+        maxOutputTokens: config.META_MAX_OUTPUT_TOKENS,
+        reasoningEffort: config.META_REASONING_EFFORT,
+        timeoutMs: config.META_TIMEOUT_MS,
+        gate: usage,
+        fetchImpl: options.fetchImpl,
+      });
       return {
-        provider: new MetaProvider({
-          apiKey: config.MODEL_API_KEY,
-          model: config.META_MODEL,
-          baseUrl: config.META_BASE_URL,
-          maxOutputTokens: config.META_MAX_OUTPUT_TOKENS,
-          reasoningEffort: config.META_REASONING_EFFORT,
-          timeoutMs: config.META_TIMEOUT_MS,
-          gate: usage,
-          fetchImpl: options.fetchImpl,
-        }),
+        provider: meta,
         usage,
         paid: true,
         model: config.META_MODEL,
+        // Muse Image draws; Muse Spark reads the board first when the student refers to it ("this situation").
+        diagram: new DiagramService(
+          new MetaImageProvider({
+            apiKey: config.MODEL_API_KEY,
+            model: config.META_IMAGE_MODEL,
+            baseUrl: config.META_BASE_URL,
+            timeoutMs: config.META_IMAGE_TIMEOUT_MS,
+            gate: usage,
+            fetchImpl: options.fetchImpl,
+          }),
+          meta,
+        ),
       };
     }
   }

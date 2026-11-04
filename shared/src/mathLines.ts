@@ -25,7 +25,7 @@ export interface ArithmeticCheck {
 const SUPERSCRIPT_DIGITS: Record<string, string> = { "⁰": "0", "¹": "1", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "⁻": "−" };
 
 /** Units that cannot be mistaken for a variable (no bare "m", "g", "s"), stripped from after a number. */
-const SAFE_UNITS = /(?<=[\d)])\s*(?:cm|mm|km|kg|mg|ml|hz|min|ms)[²³]?(?![a-z])/g;
+const SAFE_UNITS = /(?<=[\d)])\s*(?:(?:km|cm|mm|m)\/s(?:[²³]|\^?[23])?|(?:cm|mm|km|kg|mg|ml|hz|min|ms)[²³]?)(?![a-z\d])/g;
 
 /** Turns written maths into the calculator's tokens, or null when any part is not plain numeric maths. */
 export function tokenizeMath(text: string): string[] | null {
@@ -84,10 +84,11 @@ const IDENTIFIER = /^[a-zA-Z]\w{0,6}$/;
  */
 export function verifyLines(lines: TranscribedLine[]): ArithmeticCheck[] {
   const checks: ArithmeticCheck[] = [];
-  let above: { lhs: string | null; expression: string; value: number } | null = null;
+  let above: { line: number; lhs: string | null; expression: string; value: number } | null = null;
 
   for (const { line, text } of [...lines].sort((a, b) => a.line - b.line)) {
-    const parts = text.replace(/`/g, "").split(/[=≈≃≅]/).map((p) => p.trim());
+    // Units that cannot be mistaken for a variable come off first, so "21.3 m/s²" is the plain number 21.3.
+    const parts = text.replace(/`/g, "").split(/[=≈≃≅]/).map((p) => p.replace(SAFE_UNITS, "").trim());
     const values = parts.map(value);
     let verdict: ArithmeticCheck | null = null;
 
@@ -112,6 +113,20 @@ export function verifyLines(lines: TranscribedLine[]): ArithmeticCheck[] {
       const ok = agreesWithWritten(above.value, parts[1]);
       if (!ok) return [...checks, { line, ok: false, expression: above.expression, computed: formatNumber(above.value), claimed: parts[1] }];
       verdict = { line, ok: true, expression: above.expression, computed: formatNumber(above.value) };
+      // The result agrees with the calculation above it, so that calculation was done right too.
+      if (!checks.some((c) => c.line === above!.line)) checks.push({ line: above.line, ok: true, expression: above.expression, computed: formatNumber(above.value) });
+    }
+    // A result whose variable could not be matched (handwriting often turns an "a" into an "α" or a "∧"): when its number
+    // is what the calculation above works out to, that is a confirmation. It is never used to call a line wrong,
+    // because a different variable may simply be a different quantity.
+    // The number is read from the start of the result, whatever follows it (a handwritten unit is easily misread too).
+    const lead = parts.length === 2 ? /^(\d+\.\d+)(?![\d.])/.exec(parts[1])?.[1] : undefined;
+    if (!verdict && above && !resultOnly && line - above.line <= 2 && lead) {
+      const claimed = Number(lead);
+      if (Number.isFinite(claimed) && Math.abs(above.value - claimed) <= Math.pow(10, -decimals(lead)) / 2 + 1e-12) {
+        verdict = { line, ok: true, expression: above.expression, computed: formatNumber(above.value) };
+        if (!checks.some((c) => c.line === above!.line)) checks.push({ line: above.line, ok: true, expression: above.expression, computed: formatNumber(above.value) });
+      }
     }
     if (verdict) checks.push(verdict);
 
@@ -119,7 +134,7 @@ export function verifyLines(lines: TranscribedLine[]): ArithmeticCheck[] {
     for (let i = parts.length - 1; i >= 0; i--) {
       const v = values[i];
       if (v !== null && !isBareNumber(parts[i])) {
-        above = { lhs: i > 0 && IDENTIFIER.test(parts[0]) ? parts[0] : null, expression: parts[i], value: v };
+        above = { line, lhs: i > 0 && IDENTIFIER.test(parts[0]) ? parts[0] : null, expression: parts[i], value: v };
         break;
       }
     }

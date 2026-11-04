@@ -35,6 +35,9 @@ const EnvSchema = z.object({
   /** Hidden reasoning effort; "off" leaves it to the provider default. More effort costs more. */
   META_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high", "off"]).default("low"),
   META_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  /** Muse Image draws the diagrams ($0.01 each). Only used with AI_PROVIDER=meta. */
+  META_IMAGE_MODEL: z.string().default("muse-image-1.0"),
+  META_IMAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   // Application-level safety limits, not provider-enforced limits.
   MAX_META_CALLS_PER_SESSION: z.coerce.number().int().nonnegative().default(10),
   MAX_META_REQUESTS_PER_DAY: z.coerce.number().int().nonnegative().default(50),

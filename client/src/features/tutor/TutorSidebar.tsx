@@ -19,7 +19,7 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
   const loading = useTutorStore((s) => s.loading);
   const server = useTutorStore((s) => s.server);
   const paidAcknowledged = useTutorStore((s) => s.paidAcknowledged);
-  const { ask, retry, showOnBoard, newConversation, loadServerInfo } = useTutorStore.getState();
+  const { ask, makeDiagram, retry, showOnBoard, newConversation, loadServerInfo } = useTutorStore.getState();
   const [confirmingNew, setConfirmingNew] = useState(false);
 
   useEffect(() => {
@@ -66,7 +66,7 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
         onShowOnBoard={showOnBoard}
       />
 
-      <Composer locked={locked} onAction={(mode) => void ask(mode)} onAsk={(q) => void ask("ask", q)} />
+      <Composer locked={locked} onAction={(mode) => void ask(mode)} onAsk={(q) => void ask("ask", q)} diagrams={server?.diagrams === true} onDiagram={(d) => void makeDiagram(d)} />
 
       <ConfirmDialog
         visible={confirmingNew}

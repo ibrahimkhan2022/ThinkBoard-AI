@@ -40,7 +40,7 @@ describe("HTTP API", () => {
   it("reports health with the active provider", async () => {
     const app = await buildServer(config);
     const res = await app.inject({ method: "GET", url: "/api/health" });
-    expect(res.json()).toEqual({ ok: true, provider: "mock", isMock: true, paid: false });
+    expect(res.json()).toEqual({ ok: true, provider: "mock", isMock: true, paid: false, diagrams: false });
   });
 
   it("returns a validated, mock-flagged tutor result", async () => {

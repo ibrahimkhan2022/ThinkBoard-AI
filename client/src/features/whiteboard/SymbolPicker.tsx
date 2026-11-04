@@ -4,6 +4,7 @@ import { Search, X } from "../../components/icons";
 import { colors, radius } from "../../lib/theme";
 import { refocusEditor, syncEditorSelection } from "./editorFocus";
 import { SYMBOL_CATEGORIES, searchSymbols } from "./logic/mathSymbols";
+import { addRecentSymbol, loadRecentSymbols, saveRecentSymbols } from "./logic/recentSymbols";
 import { useWhiteboardStore } from "./whiteboardStore";
 
 export const SYMBOL_PANEL_WIDTH = 304;
@@ -41,9 +42,19 @@ export function SymbolPicker({ onClose, width = SYMBOL_PANEL_WIDTH }: { onClose:
     [searching, query, category],
   );
 
+  const [recent, setRecent] = useState(loadRecentSymbols);
+
   const close = () => {
     onClose();
     refocusEditor();
+  };
+
+  /** Inserts a symbol and remembers it, newest first, for the Recent section. */
+  const pick = (c: string) => {
+    insert(c);
+    const next = addRecentSymbol(recent, c);
+    setRecent(next);
+    saveRecentSymbols(next);
   };
 
   return (
@@ -74,6 +85,19 @@ export function SymbolPicker({ onClose, width = SYMBOL_PANEL_WIDTH }: { onClose:
         </Pressable>
       </View>
 
+      {!searching && recent.length > 0 && (
+        <View style={styles.recent} accessibilityLabel="Recently used symbols">
+          <Text style={styles.recentLabel}>Recent</Text>
+          <View style={styles.grid}>
+            {recent.map((c) => (
+              <Pressable key={c} accessibilityRole="button" accessibilityLabel={`Insert recent symbol ${c}`} onPress={() => pick(c)} style={[styles.cell, styles.recentCell]}>
+                <Text style={styles.glyph}>{c}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+
       {!searching && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
           {SYMBOL_CATEGORIES.map((c) => (
@@ -92,7 +116,7 @@ export function SymbolPicker({ onClose, width = SYMBOL_PANEL_WIDTH }: { onClose:
 
       <ScrollView style={styles.gridScroll} contentContainerStyle={styles.grid} keyboardShouldPersistTaps="always">
         {shown.map((e) => (
-          <Pressable key={e.c} accessibilityRole="button" accessibilityLabel={`Insert ${e.name.split(" ")[0]} ${e.c}`} onPress={() => insert(e.c)} style={styles.cell}>
+          <Pressable key={e.c} accessibilityRole="button" accessibilityLabel={`Insert ${e.name.split(" ")[0]} ${e.c}`} onPress={() => pick(e.c)} style={styles.cell}>
             <Text style={styles.glyph}>{e.c}</Text>
           </Pressable>
         ))}
@@ -122,6 +146,9 @@ const styles = StyleSheet.create({
   fraction: { height: 34, paddingHorizontal: 8, alignItems: "center", justifyContent: "center", borderRadius: 10, backgroundColor: colors.accentSoft },
   fractionText: { color: colors.accent, fontSize: 12, fontWeight: "700" },
   close: { width: 30, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 10 },
+  recent: { gap: 4, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  recentLabel: { color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.4, textTransform: "uppercase" },
+  recentCell: { backgroundColor: colors.accentSoft },
   tabs: { gap: 6 },
   tab: { paddingHorizontal: 10, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 999 },
   tabOn: { backgroundColor: colors.accentSoft },

@@ -1,14 +1,19 @@
-import type { MockScenario, Rect, TutorMode, TutorRequest, TutorResult } from "@thinkboard/shared";
+import type { DiagramRequest, MockScenario, Rect, TutorMode, TutorRequest, TutorResult } from "@thinkboard/shared";
+import { Image } from "react-native";
 import { create } from "zustand";
 import { createId } from "../../lib/ids";
 import { useAnnotationStore } from "../annotations/annotationStore";
 import { resolveAnnotation } from "../annotations/resolveAnnotation";
 import { chooseAIRegion, fitMarkerMargin, type AIRegion, type FocusMode } from "../whiteboard/logic/aiRegion";
+import { typedLinesOf } from "../whiteboard/logic/typedLines";
+import { diagramIsAboutBoard, wantsDiagram } from "./diagramIntent";
 import { visibleWorldRect } from "../whiteboard/logic/viewport";
+import { placeImage } from "../whiteboard/import/importImage";
+import { prepareImage } from "../whiteboard/import/prepareImage";
 import { useWhiteboardStore } from "../whiteboard/whiteboardStore";
 import { ACTION_LABELS, historyFor } from "./chat";
 import { MAX_STORED_MESSAGES, type ChatMessage } from "./chatTypes";
-import { fetchServerInfo, fetchUsage, requestTutor, type ServerInfo, type UsageInfo } from "./tutorApi";
+import { fetchServerInfo, fetchUsage, requestDiagram, requestTutor, TutorApiError, type ServerInfo, type UsageInfo } from "./tutorApi";
 
 /**
  * Longest edge of the image sent to the AI. Paid models bill by image size
@@ -45,6 +50,8 @@ interface TutorState {
   newConversation: () => void;
   /** Runs one tutoring action. Only ever called from an explicit user click. */
   ask: (mode: TutorMode, question?: string) => Promise<void>;
+  /** Draws a study diagram with Muse Image and puts it on the board. Costs about a cent: only ever called from an explicit click. */
+  makeDiagram: (description: string, typedByStudent?: boolean) => Promise<void>;
   /** Runs a failed action again (an explicit click on Retry). */
   retry: (messageId: string) => Promise<void>;
   /** Draws a saved answer's highlight on the board and brings it into view. */
@@ -91,6 +98,8 @@ export const useTutorStore = create<TutorState>((set, get) => ({
   ask: async (mode, question) => {
     if (get().loading) return;
     const text = question?.trim() || undefined;
+    // "Can you draw a diagram of ...": the tutor answers in words, so a request to draw goes to Muse Image instead.
+    if (mode === "ask" && text && get().server?.diagrams && wantsDiagram(text)) return get().makeDiagram(text, true);
     const studentTurn = message(
       mode === "ask" && text
         ? { role: "student", kind: "question", text }
@@ -117,6 +126,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
     }
 
     const ai: AIRegion | null = picked && fitMarkerMargin(picked, AI_IMAGE_MAX_DIMENSION);
+    const typed = ai ? typedLinesOf(ai.lines, board.objects) : [];
     const request: TutorRequest = {
       sessionId: get().sessionId,
       mode,
@@ -124,6 +134,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       region: ai?.region ?? fallbackRegion(board.viewport, board.canvasSize),
       ...(ai && ai.lines.length ? { labeledLines: ai.lines.length } : {}),
       ...(ai ? { focus: ai.source } : {}),
+      ...(typed.length ? { typedLines: typed } : {}),
       ...(history.length ? { history } : {}),
       mockScenario: get().server?.isMock ? get().mockScenario : undefined,
     };
@@ -167,6 +178,53 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       fail(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       void get().refreshUsage(); // a refused or failed call still changes the counts
+    }
+  },
+
+  makeDiagram: async (description, typedByStudent = false) => {
+    const text = description.trim();
+    if (get().loading || !text) return;
+    const studentTurn = message({ role: "student", kind: "question", text: typedByStudent ? text : `Draw a diagram: ${text}` });
+    // Paid AI is only ever used on an explicit click, and only after the student has agreed to it.
+    if (get().server?.paid && !get().paidAcknowledged) {
+      set({ messages: append(get().messages, studentTurn, message({ role: "tutor", kind: "error", text: "Please confirm that you want to use the paid AI tutor first." })) });
+      return;
+    }
+    set({ messages: append(get().messages, studentTurn), loading: true });
+    try {
+      const request: DiagramRequest = { sessionId: get().sessionId, description: text.slice(0, 400) };
+      // "What this situation looks like": the board is shown to Muse Spark first, so it knows what the situation is.
+      if (diagramIsAboutBoard(text)) {
+        const board = useWhiteboardStore.getState();
+        const picked = chooseAIRegion(board.objects, board.selectedIds, board.viewport, board.canvasSize, get().focusMode);
+        const ai = picked && fitMarkerMargin(picked, AI_IMAGE_MAX_DIMENSION);
+        if (ai) {
+          const { renderRegion } = await import("../whiteboard/export/renderRegion");
+          const image = await renderRegion(board.objects, ai.region, {
+            maxDimension: AI_IMAGE_MAX_DIMENSION,
+            format: "png",
+            markers: ai.lines.map((l) => ({ label: String(l.index), y: l.bounds.y + l.bounds.height / 2 })),
+          });
+          const typed = typedLinesOf(ai.lines, board.objects);
+          request.imageBase64 = image.base64;
+          request.imageMimeType = image.mimeType;
+          if (typed.length) request.typedLines = typed;
+        }
+      }
+      const result = await requestDiagram(request);
+      const uri = `data:${result.imageMimeType};base64,${result.imageBase64}`;
+      const size = await new Promise<{ width: number; height: number }>((resolve, reject) => Image.getSize(uri, (width, height) => resolve({ width, height }), reject));
+      placeImage(await prepareImage(uri, size.width, size.height));
+      const shown = result.brief ? `I drew this on your board: ${result.brief}` : `I drew \u201c${text}\u201d on your board.`;
+      set({
+        messages: append(get().messages, message({ role: "tutor", kind: "notice", text: `${shown} Move or resize it, add to it, or ask me about it.` })),
+        loading: false,
+      });
+    } catch (err) {
+      const reason = err instanceof TutorApiError ? err.message : "Something went wrong while drawing the diagram.";
+      set({ messages: append(get().messages, message({ role: "tutor", kind: "error", text: reason })), loading: false });
+    } finally {
+      void get().refreshUsage();
     }
   },
 

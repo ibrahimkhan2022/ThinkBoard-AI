@@ -1,6 +1,7 @@
 import cors from "@fastify/cors";
-import { TutorRequestSchema } from "@thinkboard/shared";
+import { DiagramRequestSchema, TutorRequestSchema } from "@thinkboard/shared";
 import Fastify from "fastify";
+import { checkScope } from "./ai/scopeGuard";
 import { BudgetError } from "./budget";
 import type { AppConfig } from "./config";
 import { ProviderError } from "./providers/errors";
@@ -38,6 +39,7 @@ export async function buildServer(config: AppConfig, options: BuildOptions = {})
     isMock: tutor.provider.isMock,
     paid: selection?.paid ?? false,
     ...(selection?.model ? { model: selection.model } : {}),
+    diagrams: Boolean(selection?.diagram),
   }));
 
   /**
@@ -75,6 +77,32 @@ export async function buildServer(config: AppConfig, options: BuildOptions = {})
   });
 
   if (options.webRoot) serveWebApp(app, options.webRoot);
+
+  /** Draws a study diagram with Muse Image. Paid, so only the Meta provider offers it. */
+  app.post("/api/diagram", async (req, reply) => {
+    const diagram = selection?.diagram;
+    if (!diagram) {
+      return reply.code(501).send({ error: "diagram_unavailable", message: "Diagrams are drawn by Meta Muse Image, which is not switched on for this server." });
+    }
+    const parsed = DiagramRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", message: "Describe the diagram in a few words (3 to 400 characters).", issues: parsed.error.issues });
+    }
+    // Same study-only rule as the chat: off-topic or rule-breaking requests never reach the paid model.
+    const verdict = checkScope(parsed.data.description);
+    if (!verdict.allowed) return reply.code(422).send({ error: verdict.reason, message: verdict.message });
+    try {
+      return await diagram.generate(parsed.data);
+    } catch (err) {
+      if (err instanceof BudgetError) return reply.code(429).send({ error: err.code, message: err.message });
+      if (err instanceof ProviderError) {
+        if (err.retryAfterSeconds) reply.header("Retry-After", String(err.retryAfterSeconds));
+        return reply.code(err.httpStatus).send({ error: err.code, message: err.userMessage });
+      }
+      req.log.error({ err: err instanceof Error ? err.message : "unknown" }, "diagram failure");
+      return reply.code(500).send({ error: "provider_error", message: "The diagram could not be drawn." });
+    }
+  });
 
   return app;
 }

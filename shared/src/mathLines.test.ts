@@ -90,15 +90,42 @@ describe("a calculation and its result on two lines", () => {
 
   it("checks the result line against the calculation above it", () => {
     const ok = two("a = 4 * π^2 * 0.06 * 3^2", "a = 21.32");
-    expect(ok.map((c) => [c.line, c.ok])).toEqual([[3, true]]);
+    // The result agrees with the calculation above it, so that calculation is confirmed as well.
+    expect(ok.map((c) => [c.line, c.ok])).toEqual([[2, true], [3, true]]);
     const bad = two("a = 4 × π² × 6 × 3²", "a = 678.58");
     expect(bad[bad.length - 1]).toMatchObject({ line: 3, ok: false, claimed: "678.58" });
     expect(Number(bad[bad.length - 1].computed)).toBeCloseTo(2131.8346, 3);
   });
 
   it("also works when the result line starts with an equals sign", () => {
-    expect(two("4 × 5 + 2", "= 22")[0]).toMatchObject({ line: 3, ok: true });
-    expect(two("4 × 5 + 2", "= 23")[0]).toMatchObject({ line: 3, ok: false });
+    expect(two("4 × 5 + 2", "= 22").find((c) => c.line === 3)).toMatchObject({ ok: true });
+    expect(two("4 × 5 + 2", "= 23").find((c) => c.line === 3)).toMatchObject({ ok: false });
+  });
+
+  it("handles a squared bracket times a number and an acceleration unit on the result", () => {
+    for (const unit of ["m/s²", "m/s^2", "m/s2", "m/s"]) {
+      const checks = two("a = (2π3)²(0.06)", `a = 21.3 ${unit}`);
+      expect(checks.map((c) => [c.line, c.ok]), unit).toEqual([[2, true], [3, true]]);
+    }
+    const wrong = two("a = (2π3)²(0.06)", "a = 2.13 m/s²");
+    expect(wrong[wrong.length - 1]).toMatchObject({ line: 3, ok: false });
+    // Without the square the same result is not 21.3, which is why reading the ² matters.
+    expect(two("a = (2π3)(0.06)", "a = 21.3 m/s²").some((c) => !c.ok)).toBe(true);
+  });
+
+  it("confirms a result whose handwritten variable was misread, but never calls it wrong", () => {
+    for (const name of ["α", "∧", "n", "Δ", "0"]) {
+      const checks = two("a = (2π3)²(0.06)", `${name} = 21.3 m/s²`);
+      expect(checks.map((c) => [c.line, c.ok]), name).toEqual([[2, true], [3, true]]);
+    }
+    // A unit that was misread does not matter either.
+    for (const unit of ["m/5²", "m/5^2", "m/s?", "mls2"]) {
+      expect(two("a = (2π3)²(0.06)", `n = 21.3 ${unit}`).map((c) => c.ok), unit).toEqual([true, true]);
+    }
+    // A different number under another name is not a complaint: it may be another quantity.
+    expect(two("a = (2π3)²(0.06)", "n = 5.1 m/s²")).toEqual([]);
+    // A whole number is too easy to match by chance.
+    expect(two("a = 3 × 7.1", "n = 21")).toEqual([]);
   });
 
   it("does not compare a result with an unrelated calculation (a different variable)", () => {

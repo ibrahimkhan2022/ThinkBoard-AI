@@ -53,5 +53,13 @@ It is our own application guard using conservative estimates. It does not know a
 3. Confirm the model id works and that `reasoning_effort: "low"` is accepted. If Meta rejects it, set `META_REASONING_EFFORT=off`.
 4. Check the highlight lands on the right place on a few real boards before trusting it.
 
+## Diagrams: Muse Image (added 2026-11-03)
+`muse-image-1.0` draws one study diagram per press of the **Diagram** button for **$0.01** (a flat price per returned image; filtered or failed images are not charged; no separate charge for its built-in search, which we also switch off). Rate limit: 150 requests a minute. Diagrams go through the same gate as tutor checks: they count toward the session cap, the daily cap and the dollar budget, with a $0.01 reservation, so they cannot be used to get around the limits. The description is checked by the same study-only rule as chat questions before anything is sent (off-topic requests cost nothing). Never retried automatically. A diagram takes about 30 seconds. When the student refers to the board ("what this situation looks like"), Muse Spark first reads the board image and writes the brief (a normal Spark call, about half a cent, counted as a second request), so that diagram costs **about 1.5 cents**; a diagram of a named topic is one call, 1 cent.
+
 ## Measured usage
-None yet.
+First real calls, 2026-11-03 (key in the git-ignored `.env`, server-side only):
+- **Muse Spark 1.3, one text-only question** (no image): 777 input tokens, reported output **1,944** tokens, estimated $0.0092. The output figure is above our own 1,200 cap, so the reported completion tokens probably already include the hidden reasoning and our code counts it twice (the over-count noted above); the real cost is likely lower. Compare with the Meta dashboard before relying on it. `reasoning_effort: "low"` was accepted. About 9 seconds.
+- **Muse Image 1.0, one diagram** (the water cycle): about 29 seconds, a 1920×1280 PNG of 1.7 MB; recorded as $0.01.
+- Our counters after these two calls: $0.0192 estimated, 2 requests (`server/data/usage.json`).
+- **Diagram of a situation on the board** (Spark brief + image): about 28 seconds; estimated $0.0154 (brief: 771 input / 1,051 output tokens).
+Not yet measured: a tutor check with a board image on the real model, and the dashboard comparison.

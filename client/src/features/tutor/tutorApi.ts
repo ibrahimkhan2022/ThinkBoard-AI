@@ -1,4 +1,4 @@
-import { TutorResultSchema, type TutorRequest, type TutorResult } from "@thinkboard/shared";
+import { DiagramResultSchema, TutorResultSchema, type DiagramRequest, type DiagramResult, type TutorRequest, type TutorResult } from "@thinkboard/shared";
 import { API_BASE_URL } from "../../lib/config";
 
 // Local models and reasoning models can be slow; the server enforces its own, shorter limits per provider.
@@ -12,6 +12,8 @@ export interface ServerInfo {
   /** True when each call costs money (credits). */
   paid: boolean;
   model?: string;
+  /** True when the server can draw diagrams (Meta Muse Image). */
+  diagrams: boolean;
 }
 
 /** What the backend is currently serving. Null if it cannot be reached. */
@@ -21,7 +23,7 @@ export async function fetchServerInfo(): Promise<ServerInfo | null> {
     if (!res.ok) return null;
     const body = (await res.json()) as Partial<ServerInfo>;
     if (body.provider !== "mock" && body.provider !== "ollama" && body.provider !== "meta") return null;
-    return { provider: body.provider, isMock: Boolean(body.isMock), paid: Boolean(body.paid), model: body.model };
+    return { provider: body.provider, isMock: Boolean(body.isMock), paid: Boolean(body.paid), model: body.model, diagrams: body.diagrams === true };
   } catch {
     return null;
   }
@@ -80,6 +82,42 @@ export async function requestTutor(request: TutorRequest): Promise<TutorResult> 
       throw new TutorApiError("The tutor took too long to respond. Please try again.");
     }
     throw new TutorApiError("Could not reach the tutor service. Is the server running?");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Muse Image takes a while to plan and draw; the server enforces its own limit. */
+const DIAGRAM_TIMEOUT_MS = 130_000;
+
+/** Asks the backend to draw a diagram. Costs about a cent, so it is only ever called from an explicit button press. */
+export async function requestDiagram(request: DiagramRequest): Promise<DiagramResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DIAGRAM_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/diagram`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      let message = `The diagram service returned an error (${res.status}).`;
+      try {
+        const body = (await res.json()) as { message?: unknown };
+        if (typeof body.message === "string" && body.message) message = body.message;
+      } catch {
+        // Keep the generic message.
+      }
+      throw new TutorApiError(message);
+    }
+    const parsed = DiagramResultSchema.safeParse(await res.json());
+    if (!parsed.success) throw new TutorApiError("The diagram service sent an unexpected reply.");
+    return parsed.data;
+  } catch (err) {
+    if (err instanceof TutorApiError) throw err;
+    if (err instanceof Error && err.name === "AbortError") throw new TutorApiError("The diagram took too long to draw. Please try again.");
+    throw new TutorApiError("Could not reach the diagram service. Is the server running?");
   } finally {
     clearTimeout(timeout);
   }

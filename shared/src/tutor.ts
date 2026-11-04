@@ -98,6 +98,11 @@ export const TutorRequestSchema = z
     focus: z.enum(["selection", "recent", "view"]).optional(),
     /** Number of lines of work labelled 1..N (blue circles in the left margin) in the image. */
     labeledLines: z.number().int().min(0).max(40).optional(),
+    /**
+     * Numbered lines that are typed text, exactly as written (superscripts as ², subscripts as ₂). The image shows them too,
+     * but a small raised 2 is easy to misread, so the model is told to trust these characters over the picture.
+     */
+    typedLines: z.array(z.object({ line: z.number().int().min(1).max(40), text: z.string().min(1).max(300) })).max(40).optional(),
     /** The last few turns of this conversation, oldest first. */
     history: z.array(HistoryItemSchema).max(6).optional(),
     /** Test aid: only the mock provider reads this; real providers ignore it. */

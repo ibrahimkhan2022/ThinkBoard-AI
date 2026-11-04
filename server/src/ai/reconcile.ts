@@ -63,3 +63,25 @@ export function reconcileArithmetic(response: TutorResponse, checks: ArithmeticC
   }
   return withChecks;
 }
+
+/** The model's complaint is that a power, square or exponent is missing. */
+const POWER_CLAIM = /\b(?:squar\w*|cub(?:e|ed|ing)|exponent\w*|power|raised)\b/i;
+/** A power written in the line itself: a superscript digit, or ^. */
+const SHOWS_POWER = /[²³⁴⁵⁶⁷⁸⁹ⁿ]|\^/;
+
+/**
+ * A typed line is known exactly. When the model says that line is missing a square or a power but the line already
+ * shows one (x² is in its characters), the model misread the picture: the claim is withdrawn rather than shown as fact.
+ */
+export function withdrawFalsePowerClaim(response: TutorResponse, typedLines: { line: number; text: string }[] | undefined): TutorResponse {
+  if (response.status !== "error_found" || response.errorStep === undefined || !typedLines?.length) return response;
+  const typed = typedLines.find((t) => t.line === response.errorStep);
+  if (!typed || !SHOWS_POWER.test(typed.text)) return response;
+  if (!POWER_CLAIM.test(`${response.message} ${response.hint ?? ""}`)) return response;
+  const { hint: _hint, nextStep: _next, highlight: _box, errorStep: _line, confidence: _confidence, stepPreview: _steps, ...rest } = response;
+  return {
+    ...rest,
+    status: "uncertain",
+    message: `I could not confirm a mistake on line ${typed.line}. It is typed as \`${typed.text}\`, which already has the power in it, so my first reading of it was wrong. Check the numbers and units you put in.`,
+  };
+}

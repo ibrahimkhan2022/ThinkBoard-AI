@@ -2,6 +2,7 @@ import { useEffect, type RefObject } from "react";
 import { openContextMenu } from "./contextMenuState";
 import { pointerModifiers, useHoverStore } from "./pointerState";
 import { isEditorUi } from "./editorFocus";
+import { wheelZoomFactor } from "./logic/viewport";
 import { effectiveTool, useWhiteboardStore } from "./whiteboardStore";
 
 /**
@@ -24,7 +25,7 @@ export function useWebInput(surface: RefObject<unknown>) {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         const p = local(e);
-        store().zoomAt(p, Math.exp(-e.deltaY * 0.01));
+        store().zoomAt(p, wheelZoomFactor(e.deltaY, e.deltaMode));
       } else {
         store().panBy(-e.deltaX, -e.deltaY);
       }
@@ -50,9 +51,20 @@ export function useWebInput(surface: RefObject<unknown>) {
       openContextMenu(local(e));
     };
 
+    // Two fingers down is a pinch or a two-finger pan, never a stroke: whatever the first finger had started is dropped
+    // (a stylus with a resting palm is not this: only touch pointers count).
+    const fingers = new Set<number>();
+    const lift = (e: PointerEvent) => {
+      fingers.delete(e.pointerId);
+    };
+
     let middleDrag: { x: number; y: number } | null = null;
     const onPointerDown = (e: PointerEvent) => {
       pointerModifiers.shift = e.shiftKey;
+      if (e.pointerType === "touch") {
+        fingers.add(e.pointerId);
+        if (fingers.size >= 2) store().cancelStroke();
+      }
       if (e.button !== 1) return;
       e.preventDefault(); // no browser autoscroll on middle click
       middleDrag = { x: e.clientX, y: e.clientY };
@@ -80,7 +92,11 @@ export function useWebInput(surface: RefObject<unknown>) {
     element.addEventListener("pointerleave", onLeave);
     window.addEventListener("pointerup", endMiddleDrag);
     window.addEventListener("pointercancel", endMiddleDrag);
+    window.addEventListener("pointerup", lift);
+    window.addEventListener("pointercancel", lift);
     return () => {
+      window.removeEventListener("pointerup", lift);
+      window.removeEventListener("pointercancel", lift);
       element.removeEventListener("wheel", onWheel);
       element.removeEventListener("contextmenu", onContextMenu);
       element.removeEventListener("pointerdown", onPointerDown, { capture: true });

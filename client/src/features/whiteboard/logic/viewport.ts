@@ -20,6 +20,23 @@ export function zoomAt(viewport: Viewport, screenPoint: Point, factor: number): 
   return { scale, x: screenPoint.x - world.x * scale, y: screenPoint.y - world.y * scale };
 }
 
+/** The most one wheel event may zoom by (in "wheel units"; see wheelZoomFactor): about 28% either way. */
+const MAX_WHEEL_STEP = 25;
+const WHEEL_LINE_UNITS = 16;
+const WHEEL_ZOOM_RATE = 0.01;
+
+/**
+ * How much one Ctrl+wheel (or trackpad pinch) event zooms by. A trackpad pinch sends many small events and
+ * is followed as it comes; a mouse wheel sends one big one per notch (100 units, or 3 lines in Firefox), which
+ * unchecked zooms about 2.7 times per notch and jumps straight to the limit. Each event is capped, so a notch is a step.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
+  const units = deltaMode === 1 ? deltaY * WHEEL_LINE_UNITS : deltaMode === 2 ? deltaY * 100 : deltaY;
+  if (!Number.isFinite(units)) return 1;
+  const capped = Math.max(-MAX_WHEEL_STEP, Math.min(MAX_WHEEL_STEP, units));
+  return Math.exp(-capped * WHEEL_ZOOM_RATE);
+}
+
 export function panBy(viewport: Viewport, dx: number, dy: number): Viewport {
   return { ...viewport, x: viewport.x + dx, y: viewport.y + dy };
 }
