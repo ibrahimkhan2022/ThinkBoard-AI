@@ -18,3 +18,6 @@ server/data/
 
 # Leftover from the Expo scaffolder (nested repo, renamed so it is not treated as a submodule)
 client/.git-scaffold-backup/
+
+# Claude Code local settings
+client/.claude/
