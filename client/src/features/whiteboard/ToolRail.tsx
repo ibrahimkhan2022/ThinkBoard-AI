@@ -1,10 +1,15 @@
-import { Fragment, type ComponentType } from "react";
+import { Fragment, useRef, type ComponentRef, type ComponentType, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
-import { Eraser, Hand, ImagePlus, MousePointer2, Pencil, Type } from "../../components/icons";
+import { ChartLine, Eraser, Hand, ImagePlus, Mic, MousePointer2, Pencil, Square, Type } from "../../components/icons";
 import { IconButton } from "../../components/IconButton";
 import { colors, radius } from "../../lib/theme";
+import { useGraphDialog } from "../graphs/graphStore";
+import { useTutorStore } from "../tutor/tutorStore";
+import { toggleBoardDictation } from "../voice/boardDictation";
+import { useVoiceStore } from "../voice/voiceStore";
 import { TOOL_SETTINGS_OVERLAY, useOverlayStore } from "../overlays/overlayStore";
 import { useImportImage } from "./import/useImportImage";
+import { useKeepsEditorFocus } from "./useKeepsEditorFocus";
 import { TOOLS_WITH_SETTINGS, ToolSettings } from "./ToolSettings";
 import type { Tool } from "./types";
 import { useWhiteboardStore } from "./whiteboardStore";
@@ -12,7 +17,7 @@ import { useWhiteboardStore } from "./whiteboardStore";
 type Icon = ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
 interface Entry {
-  tool: Tool | "image";
+  tool: Tool | "image" | "graph" | "voice";
   label: string;
   key: string;
   icon: Icon;
@@ -31,8 +36,23 @@ const GROUPS: Entry[][] = [
   [
     { tool: "text", label: "Text", key: "T", icon: Type },
     { tool: "image", label: "Image", key: "I", icon: ImagePlus },
+    { tool: "graph", label: "Graph", key: "", icon: ChartLine },
   ],
 ];
+
+/** Speech to text: only offered when the server has it (the paid Meta provider). Words go into a text box. */
+const SPEAK: Entry = { tool: "voice", label: "Speak to type", key: "", icon: Mic };
+
+/** One button's place in the rail. The microphone's keeps the keyboard focus, so pressing it while typing does not close the text box. */
+function Slot({ keepsFocus, children }: { keepsFocus: boolean; children: ReactNode }) {
+  const ref = useRef<ComponentRef<typeof View>>(null);
+  useKeepsEditorFocus(ref, keepsFocus);
+  return (
+    <View ref={ref} style={styles.slot}>
+      {children}
+    </View>
+  );
+}
 
 /**
  * The floating tool palette. Vertical beside the board on wide screens, a
@@ -45,12 +65,21 @@ export function ToolRail({ dock }: { dock: boolean }) {
   const setTool = useWhiteboardStore((s) => s.setTool);
   const settingsOpen = useOverlayStore((s) => s.active === TOOL_SETTINGS_OVERLAY);
   const importImage = useImportImage();
+  const voiceOffered = useTutorStore((s) => s.server?.voice === true);
+  const listening = useVoiceStore((s) => s.status === "recording" && s.source === "board");
+  const voiceBusy = useVoiceStore((s) => s.status !== "idle" && !(s.status === "recording" && s.source === "board"));
 
   const press = (entry: Entry) => {
     const overlays = useOverlayStore.getState();
     if (entry.tool === "image") {
       overlays.close();
       importImage();
+    } else if (entry.tool === "voice") {
+      overlays.close();
+      if (!voiceBusy) toggleBoardDictation();
+    } else if (entry.tool === "graph") {
+      overlays.close();
+      useGraphDialog.getState().show();
     } else if (entry.tool === tool) {
       if (TOOLS_WITH_SETTINGS.includes(entry.tool)) overlays.toggle(TOOL_SETTINGS_OVERLAY);
     } else {
@@ -74,23 +103,23 @@ export function ToolRail({ dock }: { dock: boolean }) {
         </View>
       )}
       <View style={[styles.bar, dock ? styles.dock : styles.rail]} accessibilityRole="toolbar" accessibilityLabel="Drawing tools">
-        {GROUPS.map((group, g) => (
+        {(voiceOffered ? [...GROUPS.slice(0, -1), [...GROUPS[GROUPS.length - 1], SPEAK]] : GROUPS).map((group, g) => (
           <Fragment key={g}>
             {g > 0 && <View style={dock ? styles.dividerV : styles.dividerH} />}
             {group.map((entry) => (
-              <View key={entry.label} style={styles.slot}>
+              <Slot key={entry.label} keepsFocus={entry.tool === "voice"}>
                 <IconButton
-                  icon={entry.icon}
-                  label={entry.label}
+                  icon={entry.tool === "voice" && listening ? Square : entry.icon}
+                  label={entry.tool === "voice" && listening ? "Stop listening and type what I said" : entry.label}
                   shortcut={entry.key}
-                  active={entry.tool === tool}
+                  active={entry.tool === "voice" ? listening : entry.tool === tool}
                   onPress={() => press(entry)}
                   tooltipSide={dock ? "top" : "right"}
                   hideTooltip={settingsOpen && entry.tool === tool}
                   badge={entry.tool === tool && TOOLS_WITH_SETTINGS.includes(entry.tool)}
                 />
                 {popoverFor(entry)}
-              </View>
+              </Slot>
             ))}
           </Fragment>
         ))}

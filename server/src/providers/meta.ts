@@ -2,7 +2,7 @@ import type { DiagramRequest, TutorRequest, TutorResponse, UsageReport } from "@
 import { estimateImageTokens, estimateTextTokens, imageSizeFromBase64 } from "../ai/imageInfo";
 import { buildUserText, parseModelResponse, SYSTEM_PROMPT } from "../ai/prompt";
 import type { UsageTracker } from "../budget";
-import { ProviderError } from "./errors";
+import { ProviderError, ProviderOutputError } from "./errors";
 import type { AIProvider } from "./types";
 
 /**
@@ -189,7 +189,16 @@ export class MetaProvider implements AIProvider {
     gate.settle(reservation, actualUsd);
     if (usage) report?.({ ...usage, estimatedCostUsd: round(actualUsd ?? 0) });
 
-    return parseModelResponse(messageText(json), request);
+    try {
+      return parseModelResponse(messageText(json), request);
+    } catch (err) {
+      if (!(err instanceof ProviderOutputError)) throw err;
+      // Hidden reasoning counts against the output cap, so a long answer can be cut off half way.
+      const reason = json.choices?.[0]?.finish_reason;
+      const explained = new ProviderOutputError(`${err.message} (finish_reason=${reason ?? "unknown"}, output tokens ${usage?.outputTokens ?? "unknown"}, cap ${this.options.maxOutputTokens})`);
+      explained.truncated = reason === "length";
+      throw explained;
+    }
   }
 }
 

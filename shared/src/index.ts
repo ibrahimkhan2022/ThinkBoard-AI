@@ -4,4 +4,8 @@ export * from "./fractions";
 export * from "./geometry";
 export * from "./mathLines";
 export * from "./mathText";
+export * from "./transcribe";
 export * from "./tutor";
+export * from "./graphing/expression";
+export * from "./graphing/plot";
+export * from "./graphing/svg";

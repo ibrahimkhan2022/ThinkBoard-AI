@@ -1,9 +1,13 @@
 import type { Rect } from "@thinkboard/shared";
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { Platform, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, Italic, Minus, Plus, Sigma, Subscript, Superscript, Underline } from "../../components/icons";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, Italic, Mic, Minus, Plus, Sigma, Square, Subscript, Superscript, Underline } from "../../components/icons";
 import { colors, radius } from "../../lib/theme";
+import { useTutorStore } from "../tutor/tutorStore";
+import { toggleBoardDictation } from "../voice/boardDictation";
+import { useVoiceStore } from "../voice/voiceStore";
 import { refocusEditor, syncEditorSelection } from "./editorFocus";
+import { useKeepsEditorFocus } from "./useKeepsEditorFocus";
 import { placePanel, placeToolbar, GRIP_ALLOWANCE } from "./logic/toolbarPlacement";
 import { flowOf } from "./logic/textMetrics";
 import { inheritedAttrs, rangeState, type AttrKey } from "./logic/textRuns";
@@ -18,26 +22,6 @@ const nextSize = (size: number, direction: 1 | -1) =>
   direction === 1 ? (SIZE_STOPS.find((s) => s > size) ?? size) : ([...SIZE_STOPS].reverse().find((s) => s < size) ?? size);
 
 const ALIGN_ORDER: TextAlign[] = ["left", "center", "right"];
-
-/**
- * Marks a view as part of the text-editing UI and stops presses on it from taking
- * keyboard focus, so Bold, a colour or a symbol never costs the editor its caret
- * or its selection. Text fields inside (the symbol search) still take focus.
- */
-function useKeepsEditorFocus(ref: { current: unknown }, mounted: boolean) {
-  useEffect(() => {
-    const node = ref.current as HTMLElement | null;
-    if (!mounted || Platform.OS !== "web" || !node?.addEventListener) return;
-    node.setAttribute("data-text-ui", "");
-    const keep = (e: Event) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      e.preventDefault();
-    };
-    node.addEventListener("mousedown", keep);
-    return () => node.removeEventListener("mousedown", keep);
-  }, [ref, mounted]);
-}
 
 interface Target {
   /** The text's box on screen (canvas-view pixels). */
@@ -127,6 +111,9 @@ export function TextToolbar() {
   const [palette, setPalette] = useState(false);
   const [fontMenu, setFontMenu] = useState(false);
   const editing = target?.editing ?? false;
+  const voiceOffered = useTutorStore((s) => s.server?.voice === true);
+  const listening = useVoiceStore((s) => s.status === "recording" && s.source === "board");
+  const voiceBusy = useVoiceStore((s) => s.status !== "idle" && !(s.status === "recording" && s.source === "board"));
   // The bar and the panel only exist while there is something to format, so the listeners attach when they appear.
   useKeepsEditorFocus(bar, target !== null);
   useKeepsEditorFocus(panel, target !== null && symbols);
@@ -234,6 +221,18 @@ export function TextToolbar() {
             }}
           >
             <Sigma size={16} color={symbols ? colors.accent : colors.text} strokeWidth={2.25} />
+          </Button>
+        )}
+
+        {editing && voiceOffered && (
+          <Button
+            label={listening ? "Stop listening and type what I said" : "Speak to type (turns your voice into text)"}
+            on={listening}
+            onPress={() => {
+              if (!voiceBusy) toggleBoardDictation();
+            }}
+          >
+            {listening ? <Square size={14} color={colors.danger} strokeWidth={2.5} fill={colors.danger} /> : <Mic size={16} color={voiceBusy ? colors.muted : colors.text} strokeWidth={2.25} />}
           </Button>
         )}
 

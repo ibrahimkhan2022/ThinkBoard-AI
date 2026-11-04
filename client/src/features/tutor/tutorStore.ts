@@ -162,8 +162,13 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       const result = await requestTutor(request);
       // Map the highlight with the region and lines that were actually sent, not the current viewport.
       const outcome = resolveAnnotation(result.response, request.region, ai?.lines);
+      const answerId = createId();
+      // An answer that does not point at anything still gets its popup, beside the student's last line (no box drawn).
+      const anchor = outcome.kind === "none" && ai ? answerAnchor(ai) : undefined;
       if (outcome.kind === "highlight") {
-        useAnnotationStore.getState().setAnnotation({ rect: outcome.rect, isMock: result.meta.isMock, line: outcome.line });
+        useAnnotationStore.getState().setAnnotation({ rect: outcome.rect, isMock: result.meta.isMock, line: outcome.line, messageId: answerId });
+      } else if (anchor) {
+        useAnnotationStore.getState().setAnnotation({ rect: anchor, isMock: result.meta.isMock, outline: false, messageId: answerId });
       }
       const answer = message({
         role: "tutor",
@@ -172,8 +177,9 @@ export const useTutorStore = create<TutorState>((set, get) => ({
         result,
         focus: { source: ai?.source ?? "none", lineCount: ai?.lines.length ?? 0, pixelWidth: pixels?.width, pixelHeight: pixels?.height },
         ...(outcome.kind === "highlight" ? { highlight: outcome.rect, ...(outcome.line ? { highlightLine: outcome.line } : {}) } : {}),
+        ...(anchor ? { anchor } : {}),
       });
-      set({ messages: append(get().messages, answer), loading: false });
+      set({ messages: append(get().messages, { ...answer, id: answerId }), loading: false });
     } catch (err) {
       fail(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -238,11 +244,20 @@ export const useTutorStore = create<TutorState>((set, get) => ({
 
   showOnBoard: (messageId) => {
     const found = get().messages.find((m) => m.id === messageId);
-    if (!found?.highlight) return;
-    useAnnotationStore.getState().setAnnotation({ rect: found.highlight, isMock: found.result?.meta.isMock ?? false, line: found.highlightLine });
-    useWhiteboardStore.getState().revealRect(found.highlight);
+    const rect = found?.highlight ?? found?.anchor;
+    if (!found || !rect) return;
+    useAnnotationStore.getState().setAnnotation({ rect, isMock: found.result?.meta.isMock ?? false, line: found.highlightLine, messageId: found.id, ...(found.highlight ? {} : { outline: false }) });
+    useWhiteboardStore.getState().revealRect(rect);
   },
 }));
+
+/** Where an answer's popup goes when nothing was highlighted: the student's last numbered line, else what the AI looked at. */
+function answerAnchor(ai: AIRegion): Rect {
+  const last = ai.lines[ai.lines.length - 1];
+  if (!last) return ai.region;
+  const p = 10;
+  return { x: last.bounds.x - p, y: last.bounds.y - p, width: last.bounds.width + p * 2, height: last.bounds.height + p * 2 };
+}
 
 function fallbackRegion(viewport: Parameters<typeof visibleWorldRect>[0], size: { width: number; height: number }): Rect {
   const visible = visibleWorldRect(viewport, size);

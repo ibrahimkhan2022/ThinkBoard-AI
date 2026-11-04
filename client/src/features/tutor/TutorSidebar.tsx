@@ -66,7 +66,7 @@ export function TutorSidebar({ onClose }: { onClose: () => void }) {
         onShowOnBoard={showOnBoard}
       />
 
-      <Composer locked={locked} onAction={(mode) => void ask(mode)} onAsk={(q) => void ask("ask", q)} diagrams={server?.diagrams === true} onDiagram={(d) => void makeDiagram(d)} />
+      <Composer locked={locked} onAction={(mode) => void ask(mode)} onAsk={(q) => void ask("ask", q)} diagrams={server?.diagrams === true} onDiagram={(d) => void makeDiagram(d)} voice={server?.voice === true} />
 
       <ConfirmDialog
         visible={confirmingNew}

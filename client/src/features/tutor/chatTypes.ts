@@ -27,6 +27,8 @@ export interface ChatMessage {
   focus?: FocusInfo;
   /** Where this answer pointed on the board (canvas units), so "Show on board" works after a reload. */
   highlight?: Rect;
+  /** For an answer that did not highlight anything: where its popup goes (the student's last line), in canvas units. */
+  anchor?: Rect;
   /** The numbered line the highlight comes from, if it came from one. */
   highlightLine?: number;
   retry?: { mode: TutorMode; question?: string };

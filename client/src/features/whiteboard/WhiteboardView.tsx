@@ -1,6 +1,9 @@
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { ToastHost } from "../feedback/ToastHost";
+import { GraphDialog } from "../graphs/GraphDialog";
 import { AnnotationChip } from "../annotations/AnnotationChip";
+import { AnswerPopup } from "../annotations/AnswerPopup";
+import { BoardVoiceBar } from "./BoardVoiceBar";
 import { WIDE_BREAKPOINT } from "../layout/uiStore";
 import { ContextMenu } from "./ContextMenu";
 import { ToolRail } from "./ToolRail";
@@ -20,10 +23,13 @@ export function WhiteboardView() {
       <WhiteboardLoader />
       <ZoomControls compact={compact} />
       <AnnotationChip />
+      <AnswerPopup />
+      <BoardVoiceBar />
       <TextToolbar />
       <CalculatorPanel />
       <ToolRail dock={compact} />
       <ContextMenu />
+      <GraphDialog />
       <ToastHost />
     </View>
   );

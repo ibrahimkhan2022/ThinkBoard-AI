@@ -1,4 +1,4 @@
-import { DiagramResultSchema, TutorResultSchema, type DiagramRequest, type DiagramResult, type TutorRequest, type TutorResult } from "@thinkboard/shared";
+import { DiagramResultSchema, TranscribeResultSchema, TutorResultSchema, type DiagramRequest, type DiagramResult, type TranscribeRequest, type TranscribeResult, type TutorRequest, type TutorResult } from "@thinkboard/shared";
 import { API_BASE_URL } from "../../lib/config";
 
 // Local models and reasoning models can be slow; the server enforces its own, shorter limits per provider.
@@ -14,6 +14,10 @@ export interface ServerInfo {
   model?: string;
   /** True when the server can draw diagrams (Meta Muse Image). */
   diagrams: boolean;
+  /** True when the server can turn speech into text (Meta Muse Voice Transcribe). */
+  voice: boolean;
+  /** True when the words can appear live while speaking (Meta's realtime speech to text). */
+  voiceLive: boolean;
 }
 
 /** What the backend is currently serving. Null if it cannot be reached. */
@@ -23,7 +27,7 @@ export async function fetchServerInfo(): Promise<ServerInfo | null> {
     if (!res.ok) return null;
     const body = (await res.json()) as Partial<ServerInfo>;
     if (body.provider !== "mock" && body.provider !== "ollama" && body.provider !== "meta") return null;
-    return { provider: body.provider, isMock: Boolean(body.isMock), paid: Boolean(body.paid), model: body.model, diagrams: body.diagrams === true };
+    return { provider: body.provider, isMock: Boolean(body.isMock), paid: Boolean(body.paid), model: body.model, diagrams: body.diagrams === true, voice: body.voice === true, voiceLive: body.voiceLive === true };
   } catch {
     return null;
   }
@@ -118,6 +122,41 @@ export async function requestDiagram(request: DiagramRequest): Promise<DiagramRe
     if (err instanceof TutorApiError) throw err;
     if (err instanceof Error && err.name === "AbortError") throw new TutorApiError("The diagram took too long to draw. Please try again.");
     throw new TutorApiError("Could not reach the diagram service. Is the server running?");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const TRANSCRIBE_TIMEOUT_MS = 70_000;
+
+/** Sends one recording to be turned into text. Costs a fraction of a cent, so it is only ever called when the student stops a recording. */
+export async function requestTranscription(request: TranscribeRequest): Promise<TranscribeResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TRANSCRIBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      let message = `The speech service returned an error (${res.status}).`;
+      try {
+        const body = (await res.json()) as { message?: unknown };
+        if (typeof body.message === "string" && body.message) message = body.message;
+      } catch {
+        // Keep the generic message.
+      }
+      throw new TutorApiError(message);
+    }
+    const parsed = TranscribeResultSchema.safeParse(await res.json());
+    if (!parsed.success) throw new TutorApiError("The speech service sent an unexpected reply.");
+    return parsed.data;
+  } catch (err) {
+    if (err instanceof TutorApiError) throw err;
+    if (err instanceof Error && err.name === "AbortError") throw new TutorApiError("The transcription took too long. Please try again.");
+    throw new TutorApiError("Could not reach the speech service. Is the server running?");
   } finally {
     clearTimeout(timeout);
   }

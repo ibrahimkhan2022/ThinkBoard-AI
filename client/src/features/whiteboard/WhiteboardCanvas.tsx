@@ -4,6 +4,7 @@ import { Platform, StyleSheet, useWindowDimensions, View, type LayoutChangeEvent
 import { GestureDetector } from "react-native-gesture-handler";
 import { colors } from "../../lib/theme";
 import { AnnotationOverlay } from "../annotations/AnnotationOverlay";
+import { useAnnotationStore } from "../annotations/annotationStore";
 import { useUiStore, WIDE_BREAKPOINT } from "../layout/uiStore";
 import { FocusOverlay } from "../tutor/FocusOverlay";
 import { useAIFocus } from "../tutor/useAIFocus";
@@ -26,6 +27,7 @@ if (__DEV__ && Platform.OS === "web") {
   Object.assign(globalThis, {
     __whiteboard: useWhiteboardStore,
     __tutor: useTutorStore,
+    __annotation: useAnnotationStore,
     __prepareImage: prepareImage,
     // Lets the exporter be driven from the console to check what an export (and the AI image) will contain.
     __renderRegion: (...args: Parameters<typeof import("./export/renderRegion").renderRegion>) =>

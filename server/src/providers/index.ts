@@ -2,6 +2,8 @@ import { UsageTracker } from "../budget";
 import type { AppConfig } from "../config";
 import { MetaProvider, priceFor } from "./meta";
 import { DiagramService, MetaImageProvider } from "./metaImage";
+import { MetaVoiceProvider } from "./metaVoice";
+import { realtimeUrlFor, type MetaLiveOptions } from "./metaVoiceLive";
 import { MockProvider } from "./mock";
 import { OllamaProvider } from "./ollama";
 import type { AIProvider } from "./types";
@@ -18,6 +20,10 @@ export interface ProviderSelection {
   model?: string;
   /** Draws diagrams (Muse Image); only with the paid Meta provider. */
   diagram?: DiagramService;
+  /** Turns speech into text (Muse Voice Transcribe); only with the paid Meta provider. */
+  voice?: MetaVoiceProvider;
+  /** Live captions while speaking (Muse Voice Transcribe over Meta's realtime WebSocket); only with the paid Meta provider. */
+  voiceLive?: MetaLiveOptions;
 }
 
 export interface SelectOptions {
@@ -25,6 +31,8 @@ export interface SelectOptions {
   usageFile?: string;
   fetchImpl?: typeof fetch;
   now?: () => Date;
+  /** Meta's realtime speech-to-text address (tests point this at a local fake). */
+  realtimeUrl?: string;
 }
 
 /**
@@ -100,6 +108,22 @@ export function selectProvider(config: AppConfig, options: SelectOptions = {}): 
           }),
           meta,
         ),
+        voice: new MetaVoiceProvider({
+          apiKey: config.MODEL_API_KEY,
+          model: config.META_VOICE_MODEL,
+          baseUrl: config.META_BASE_URL,
+          timeoutMs: config.META_VOICE_TIMEOUT_MS,
+          maxSeconds: config.MAX_VOICE_SECONDS,
+          gate: usage,
+          fetchImpl: options.fetchImpl,
+        }),
+        voiceLive: {
+          apiKey: config.MODEL_API_KEY,
+          model: config.META_VOICE_MODEL,
+          realtimeUrl: options.realtimeUrl ?? realtimeUrlFor(config.META_BASE_URL),
+          maxSeconds: config.MAX_VOICE_SECONDS,
+          gate: usage,
+        },
       };
     }
   }

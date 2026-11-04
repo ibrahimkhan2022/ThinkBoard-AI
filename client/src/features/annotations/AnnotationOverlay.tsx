@@ -11,7 +11,7 @@ const HIGHLIGHT = "#F59E0B";
  */
 export function AnnotationOverlay({ scale }: { scale: number }) {
   const annotation = useAnnotationStore((s) => s.annotation);
-  if (!annotation) return null;
+  if (!annotation || annotation.outline === false) return null;
   const { x, y, width, height } = annotation.rect;
   const radius = 6 / scale;
   return (

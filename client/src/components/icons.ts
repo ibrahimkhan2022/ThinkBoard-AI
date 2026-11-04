@@ -45,3 +45,6 @@ export { default as ChevronDown } from "lucide-react-native/icons/chevron-down";
 export { default as Calculator } from "lucide-react-native/icons/calculator";
 export { default as Copy } from "lucide-react-native/icons/copy";
 export { default as SquarePlus } from "lucide-react-native/icons/square-plus";
+export { default as ChartLine } from "lucide-react-native/icons/chart-line";
+export { default as Mic } from "lucide-react-native/icons/mic";
+export { default as Square } from "lucide-react-native/icons/square";

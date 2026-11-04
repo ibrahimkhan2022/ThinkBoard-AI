@@ -6,7 +6,7 @@ import { useAnnotationStore } from "./annotationStore";
 export function AnnotationChip() {
   const annotation = useAnnotationStore((s) => s.annotation);
   const setAnnotation = useAnnotationStore((s) => s.setAnnotation);
-  if (!annotation) return null;
+  if (!annotation || annotation.outline === false) return null;
 
   return (
     <View style={styles.wrapper} pointerEvents="box-none">

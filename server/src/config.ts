@@ -31,13 +31,18 @@ const EnvSchema = z.object({
    */
   META_ALLOW_TRAINING_USE: BooleanFlag,
   /** Hard cap on output tokens per call, including hidden reasoning (billed as output). */
-  META_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(8000).default(1200),
+  META_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(8000).default(3000),
   /** Hidden reasoning effort; "off" leaves it to the provider default. More effort costs more. */
   META_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high", "off"]).default("low"),
   META_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   /** Muse Image draws the diagrams ($0.01 each). Only used with AI_PROVIDER=meta. */
   META_IMAGE_MODEL: z.string().default("muse-image-1.0"),
   META_IMAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  /** Muse Voice Transcribe turns recordings into text ($0.18 per hour of audio). Only used with AI_PROVIDER=meta. */
+  META_VOICE_MODEL: z.string().default("muse-voice-transcribe-1.0"),
+  META_VOICE_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  /** Longest recording accepted in one request. */
+  MAX_VOICE_SECONDS: z.coerce.number().int().min(5).max(600).default(120),
   // Application-level safety limits, not provider-enforced limits.
   MAX_META_CALLS_PER_SESSION: z.coerce.number().int().nonnegative().default(10),
   MAX_META_REQUESTS_PER_DAY: z.coerce.number().int().nonnegative().default(50),

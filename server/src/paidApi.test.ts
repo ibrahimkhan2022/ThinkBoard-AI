@@ -60,7 +60,7 @@ describe("provider selection: paid calls need every switch", () => {
 
   it("applies cost-conscious defaults: capped output and low reasoning effort", () => {
     const c = loadConfig({});
-    expect(c.META_MAX_OUTPUT_TOKENS).toBe(1200);
+    expect(c.META_MAX_OUTPUT_TOKENS).toBe(3000);
     expect(c.META_REASONING_EFFORT).toBe("low");
     expect(c.ENABLE_PAID_AI).toBe(false);
     expect(c.META_ALLOW_TRAINING_USE).toBe(false);
@@ -86,7 +86,7 @@ describe("HTTP API with the paid provider (fake network)", () => {
     expect(usage.totalSpentUsd).toBeCloseTo(0.003525, 6);
     expect(usage.remainingBudgetUsd).toBeLessThan(150);
 
-    expect((await app.inject({ method: "GET", url: "/api/health" })).json()).toEqual({ ok: true, provider: "meta", isMock: false, paid: true, model: "muse-spark-1.3", diagrams: true });
+    expect((await app.inject({ method: "GET", url: "/api/health" })).json()).toEqual({ ok: true, provider: "meta", isMock: false, paid: true, model: "muse-spark-1.3", diagrams: true, voice: true, voiceLive: true });
   });
 
   it("answers 429 with a clear message once the session limit is reached, without calling Meta again", async () => {
@@ -124,6 +124,15 @@ describe("HTTP API with the paid provider (fake network)", () => {
     const res = await app.inject({ method: "POST", url: "/api/tutor", payload: body() });
     expect(res.statusCode).toBe(502);
     expect(res.json().error).toBe("invalid_provider_output");
+  });
+
+  it("says so when the reply was cut off at the token cap, and is still billed", async () => {
+    const cut = chatCompletion('{"status":"incomplete","message":"Units are conv', { prompt_tokens: 1800, completion_tokens: 3000 });
+    cut.choices[0].finish_reason = "length";
+    const app = await buildServer(loadConfig(paid), { fetchImpl: fakeFetch(jsonResponse(cut)) });
+    const res = await app.inject({ method: "POST", url: "/api/tutor", payload: body() });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().message).toContain("cut off");
   });
 
   it("the free mock reports no usage and /api/usage says it is not paid", async () => {

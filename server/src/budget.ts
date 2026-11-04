@@ -31,6 +31,8 @@ export interface Reservation {
   readonly sessionId: string;
   readonly day: string;
   readonly worstCaseUsd: number;
+  /** False for cheap calls that only count against the money budget (dictation), not the AI-check limits. */
+  readonly counted: boolean;
 }
 
 export interface UsageSnapshot {
@@ -88,26 +90,29 @@ export class UsageTracker {
    * Checks every limit and, if all pass, counts the call and holds back its
    * worst-case cost until `settle` or `release`. Throws BudgetError otherwise.
    */
-  reserve(sessionId: string, worstCaseUsd: number): Reservation {
+  reserve(sessionId: string, worstCaseUsd: number, options: { counted?: boolean } = {}): Reservation {
+    const counted = options.counted !== false;
     const day = this.today();
     const stats = this.dayStats(day);
     const calls = this.state.sessions[sessionId] ?? 0;
 
-    if (calls >= this.limits.callsPerSession) {
+    if (counted && calls >= this.limits.callsPerSession) {
       throw new BudgetError("session_limit", `This session has used its ${this.limits.callsPerSession} AI checks. Start a new session to continue.`);
     }
-    if (stats.requests >= this.limits.requestsPerDay) {
+    if (counted && stats.requests >= this.limits.requestsPerDay) {
       throw new BudgetError("daily_limit", `The daily limit of ${this.limits.requestsPerDay} AI checks has been reached. Try again tomorrow (UTC).`);
     }
     if (this.state.totalSpentUsd + this.pendingUsd + worstCaseUsd > this.limits.budgetUsd) {
       throw new BudgetError("budget_exhausted", "The AI budget set for this app has been used up.");
     }
 
-    const reservation: Reservation = { id: this.nextId++, sessionId, day, worstCaseUsd };
+    const reservation: Reservation = { id: this.nextId++, sessionId, day, worstCaseUsd, counted };
     this.open.set(reservation.id, reservation);
     this.pendingUsd += worstCaseUsd;
-    stats.requests += 1;
-    this.state.sessions[sessionId] = calls + 1;
+    if (counted) {
+      stats.requests += 1;
+      this.state.sessions[sessionId] = calls + 1;
+    }
     this.save();
     return reservation;
   }
@@ -128,9 +133,11 @@ export class UsageTracker {
   release(reservation: Reservation): void {
     if (!this.open.delete(reservation.id)) return;
     this.pendingUsd = Math.max(0, this.pendingUsd - reservation.worstCaseUsd);
-    const stats = this.dayStats(reservation.day);
-    stats.requests = Math.max(0, stats.requests - 1);
-    this.state.sessions[reservation.sessionId] = Math.max(0, (this.state.sessions[reservation.sessionId] ?? 1) - 1);
+    if (reservation.counted) {
+      const stats = this.dayStats(reservation.day);
+      stats.requests = Math.max(0, stats.requests - 1);
+      this.state.sessions[reservation.sessionId] = Math.max(0, (this.state.sessions[reservation.sessionId] ?? 1) - 1);
+    }
     this.save();
   }
 

@@ -1,10 +1,11 @@
 import cors from "@fastify/cors";
-import { DiagramRequestSchema, TutorRequestSchema } from "@thinkboard/shared";
+import { DiagramRequestSchema, TranscribeRequestSchema, TutorRequestSchema } from "@thinkboard/shared";
 import Fastify from "fastify";
 import { checkScope } from "./ai/scopeGuard";
 import { BudgetError } from "./budget";
 import type { AppConfig } from "./config";
 import { ProviderError } from "./providers/errors";
+import { attachLiveRoute } from "./providers/metaVoiceLive";
 import { selectProvider, type ProviderSelection, type SelectOptions } from "./providers";
 import { serveWebApp } from "./staticSite";
 import { createTutorService, ProviderOutputError, type TutorService } from "./tutorService";
@@ -28,10 +29,14 @@ export async function buildServer(config: AppConfig, options: BuildOptions = {})
   if (selection?.warning) app.log.warn(selection.warning);
 
   const extraOrigins = config.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean);
-  await app.register(cors, {
-    origin: (origin, callback) =>
-      callback(null, !origin || LOCALHOST_ORIGIN.test(origin) || extraOrigins.includes(origin)),
-  });
+  const originAllowed = (origin: string | undefined) => !origin || LOCALHOST_ORIGIN.test(origin) || extraOrigins.includes(origin);
+  await app.register(cors, { origin: (origin, callback) => callback(null, originAllowed(origin)) });
+
+  // Live captions: the browser's WebSocket is relayed to Meta's realtime speech-to-text (the key stays on this server).
+  if (selection?.voiceLive) {
+    const live = attachLiveRoute(app.server, selection.voiceLive, originAllowed);
+    app.addHook("onClose", async () => live.close());
+  }
 
   app.get("/api/health", async () => ({
     ok: true,
@@ -40,6 +45,8 @@ export async function buildServer(config: AppConfig, options: BuildOptions = {})
     paid: selection?.paid ?? false,
     ...(selection?.model ? { model: selection.model } : {}),
     diagrams: Boolean(selection?.diagram),
+    voice: Boolean(selection?.voice),
+    voiceLive: Boolean(selection?.voiceLive),
   }));
 
   /**
@@ -68,7 +75,14 @@ export async function buildServer(config: AppConfig, options: BuildOptions = {})
         return reply.code(err.httpStatus).send({ error: err.code, message: err.userMessage });
       }
       if (err instanceof ProviderOutputError) {
-        return reply.code(502).send({ error: "invalid_provider_output", message: "The AI sent a reply that could not be used. Please try again." });
+        // The reason only (never the reply or the board image), so a bad reply can be diagnosed.
+        req.log.warn({ reason: err.message, truncated: err.truncated }, "unusable AI reply");
+        return reply.code(502).send({
+          error: "invalid_provider_output",
+          message: err.truncated
+            ? "The tutor's answer was cut off before it finished. Please try again."
+            : "The AI sent a reply that could not be used. Please try again.",
+        });
       }
       // Never log request bodies: they contain the student's board image.
       req.log.error({ err: err instanceof Error ? err.message : "unknown" }, "provider failure");
@@ -101,6 +115,30 @@ export async function buildServer(config: AppConfig, options: BuildOptions = {})
       }
       req.log.error({ err: err instanceof Error ? err.message : "unknown" }, "diagram failure");
       return reply.code(500).send({ error: "provider_error", message: "The diagram could not be drawn." });
+    }
+  });
+
+  /** Turns a recording into text with Muse Voice Transcribe. Paid, so only the Meta provider offers it. */
+  app.post("/api/transcribe", async (req, reply) => {
+    const voice = selection?.voice;
+    if (!voice) {
+      return reply.code(501).send({ error: "voice_unavailable", message: "Speech to text is done by Meta Muse Voice Transcribe, which is not switched on for this server." });
+    }
+    const parsed = TranscribeRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", message: "That recording could not be read. Please record it again.", issues: parsed.error.issues });
+    }
+    try {
+      return await voice.transcribe(parsed.data);
+    } catch (err) {
+      if (err instanceof BudgetError) return reply.code(429).send({ error: err.code, message: err.message });
+      if (err instanceof ProviderError) {
+        if (err.retryAfterSeconds) reply.header("Retry-After", String(err.retryAfterSeconds));
+        return reply.code(err.httpStatus).send({ error: err.code, message: err.userMessage });
+      }
+      // Never log the recording.
+      req.log.error({ err: err instanceof Error ? err.message : "unknown" }, "transcription failure");
+      return reply.code(500).send({ error: "provider_error", message: "The recording could not be turned into text." });
     }
   });
 

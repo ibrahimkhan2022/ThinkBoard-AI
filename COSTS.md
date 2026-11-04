@@ -56,6 +56,15 @@ It is our own application guard using conservative estimates. It does not know a
 ## Diagrams: Muse Image (added 2026-11-03)
 `muse-image-1.0` draws one study diagram per press of the **Diagram** button for **$0.01** (a flat price per returned image; filtered or failed images are not charged; no separate charge for its built-in search, which we also switch off). Rate limit: 150 requests a minute. Diagrams go through the same gate as tutor checks: they count toward the session cap, the daily cap and the dollar budget, with a $0.01 reservation, so they cannot be used to get around the limits. The description is checked by the same study-only rule as chat questions before anything is sent (off-topic requests cost nothing). Never retried automatically. A diagram takes about 30 seconds. When the student refers to the board ("what this situation looks like"), Muse Spark first reads the board image and writes the brief (a normal Spark call, about half a cent, counted as a second request), so that diagram costs **about 1.5 cents**; a diagram of a named topic is one call, 1 cent.
 
+## Speech to text: Muse Voice Transcribe (added 2026-11-04)
+
+- `muse-voice-transcribe-1.0`, **$0.18 per hour of audio** (read 2026-11-04 from https://dev.meta.ai/docs/pricing-rate-limits), billed for the audio actually processed, rounded down to whole seconds. Requests that fail before a transcript, and 429s, are not billed. No contributor discount for voice.
+- A 10-second question is about 0.05 cent; the longest recording the app takes (120 s) is 0.6 cent. The gate reserves the worst case (whole seconds, rounded up) first and refuses if the money budget would be passed.
+- Dictation counts against the **money budget only**, not the per-session or per-day AI-check limits (so speaking does not use up tutor checks).
+- Never retried automatically. A recording is only sent when the student presses the stop button, and only after the "I understand, enable the tutor" agreement. Listening itself costs nothing and sends nothing.
+- **Live captions** use the same price ($0.18 per hour of audio, same rate for streaming and file). The gate holds back the worst case for the longest recording (0.6 cent), settles the whole seconds actually sent, and a Cancel pays only for what was sent. A live stream Meta never accepts is not charged.
+- Not yet compared with Meta's dashboard (no real call made).
+
 ## Measured usage
 First real calls, 2026-11-03 (key in the git-ignored `.env`, server-side only):
 - **Muse Spark 1.3, one text-only question** (no image): 777 input tokens, reported output **1,944** tokens, estimated $0.0092. The output figure is above our own 1,200 cap, so the reported completion tokens probably already include the hidden reasoning and our code counts it twice (the over-count noted above); the real cost is likely lower. Compare with the Meta dashboard before relying on it. `reasoning_effort: "low"` was accepted. About 9 seconds.

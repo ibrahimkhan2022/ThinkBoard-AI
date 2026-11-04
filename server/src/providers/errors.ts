@@ -1,5 +1,7 @@
 /** The provider answered, but not with something we can use. */
 export class ProviderOutputError extends Error {
+  /** True when the model ran out of room (finish reason "length") so its reply stops half way. */
+  truncated = false;
   constructor(message: string) {
     super(message);
     this.name = "ProviderOutputError";

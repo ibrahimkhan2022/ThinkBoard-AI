@@ -86,7 +86,7 @@ export function AnswerCard({ message, onShowOnBoard }: { message: ChatMessage; o
           </View>
         )}
 
-        {message.highlight && (
+        {(message.highlight || message.anchor) && (
           <Pressable accessibilityRole="button" accessibilityLabel="Show on board" onPress={onShowOnBoard} style={styles.show}>
             <LocateFixed size={14} color={colors.accent} strokeWidth={2.25} />
             <Text style={styles.showText}>Show on board</Text>
